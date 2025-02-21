@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -30,12 +30,11 @@ import ghidra.app.util.bin.format.golang.structmapping.*;
  * <p>
  * Additionally, there can be an {@link GoUncommonType} structure immediately after this type, if
  * the uncommon bit is set in tflag.
- * <p>
  * <pre>
  * struct specialized_type { basetype_struct; (various_fields)* } struct uncommon; 
  * </pre>
  */
-@StructureMapping(structureName = "runtime._type")
+@StructureMapping(structureName = {"runtime._type", "internal/abi.Type"})
 public class GoBaseType {
 
 	@ContextField
@@ -44,17 +43,17 @@ public class GoBaseType {
 	@ContextField
 	private GoRttiMapper programContext;
 
-	@FieldMapping(signedness = Signedness.Unsigned)
+	@FieldMapping(fieldName = {"size", "Size_"}, signedness = Signedness.Unsigned)
 	private long size;
 
-	@FieldMapping
+	@FieldMapping(fieldName = {"ptrdata", "PtrBytes"})
 	private long ptrdata;
 
 	@FieldMapping
 	@EOLComment("flags")
 	private int tflag;
 
-	@FieldMapping
+	@FieldMapping(fieldName = {"kind", "Kind_"})
 	@EOLComment
 	private int kind;
 

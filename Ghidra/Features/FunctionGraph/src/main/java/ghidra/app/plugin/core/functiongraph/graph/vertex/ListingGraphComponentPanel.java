@@ -4,18 +4,16 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/**
- *
- */
+
 package ghidra.app.plugin.core.functiongraph.graph.vertex;
 
 import java.awt.*;
@@ -39,8 +37,7 @@ import docking.widgets.fieldpanel.Layout;
 import docking.widgets.fieldpanel.field.Field;
 import docking.widgets.fieldpanel.support.BackgroundColorModel;
 import docking.widgets.label.GDLabel;
-import generic.theme.GColor;
-import generic.theme.GIcon;
+import generic.theme.*;
 import generic.theme.GThemeDefaults.Colors;
 import generic.theme.GThemeDefaults.Colors.Tooltips;
 import ghidra.app.plugin.core.codebrowser.MarkerServiceBackgroundColorModel;
@@ -245,8 +242,7 @@ public class ListingGraphComponentPanel extends AbstractGraphComponentPanel {
 		tooltipTitleLabel.setHorizontalAlignment(SwingConstants.LEADING);
 		tooltipTitleLabel.setBackground(Tooltips.BACKGROUND);
 		tooltipTitleLabel.setOpaque(true);
-		Font labelFont = tooltipTitleLabel.getFont();
-		tooltipTitleLabel.setFont(labelFont.deriveFont(Font.BOLD));
+		Gui.registerFont(tooltipTitleLabel, Font.BOLD);
 
 		JPanel headerPanel = new JPanel(new BorderLayout());
 		headerPanel.add(tooltipTitleLabel);

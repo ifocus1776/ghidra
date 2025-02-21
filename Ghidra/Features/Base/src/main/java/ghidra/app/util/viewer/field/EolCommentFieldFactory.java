@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -16,7 +16,6 @@
 package ghidra.app.util.viewer.field;
 
 import java.awt.Color;
-import java.beans.PropertyEditor;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
@@ -67,7 +66,6 @@ public class EolCommentFieldFactory extends FieldFactory {
 	private int refRepeatableCommentStyle;
 
 	private EolExtraCommentsOption extraCommentsOption = new EolExtraCommentsOption();
-	private PropertyEditor extraCommmentsEditor = new EolExtraCommentsPropertyEditor();
 
 	// The codeUnitFormatOptions is used to monitor "follow pointer..." option to avoid duplication
 	// of data within auto-comment.  We don't bother adding a listener to kick the model since this
@@ -126,7 +124,7 @@ public class EolCommentFieldFactory extends FieldFactory {
 	private void setupAutoCommentOptions(Options fieldOptions, HelpLocation hl) {
 		fieldOptions.registerOption(EXTRA_COMMENT_KEY, OptionType.CUSTOM_TYPE,
 			new EolExtraCommentsOption(), hl, "The group of auto comment options",
-			extraCommmentsEditor);
+			() -> new EolExtraCommentsPropertyEditor());
 		CustomOption customOption = fieldOptions.getCustomOption(EXTRA_COMMENT_KEY, null);
 
 		if (!(customOption instanceof EolExtraCommentsOption)) {
@@ -294,11 +292,10 @@ public class EolCommentFieldFactory extends FieldFactory {
 			elementList.addAll(elements);
 		}
 
-		FieldElement[] fieldElements = elementList.toArray(new FieldElement[elementList.size()]);
-		if (fieldElements.length == 0) {
+		if (elementList.isEmpty()) {
 			return null;
 		}
-		return ListingTextField.createMultilineTextField(this, proxy, fieldElements, x, width,
+		return ListingTextField.createMultilineTextField(this, proxy, elementList, x, width,
 			maxDisplayLines, hlProvider);
 	}
 
@@ -391,9 +388,11 @@ public class EolCommentFieldFactory extends FieldFactory {
 			RowColLocation startRowCol = commentElement.getDataLocationForCharacterIndex(0);
 			int encodedRow = startRowCol.row();
 			int encodedCol = startRowCol.col();
-			Annotation annotation = new Annotation(refAddrComment, currentPrefixString, program);
+			Annotation annotation = new Annotation(refAddrComment, program);
 			FieldElement addressElement =
-				new AnnotatedTextFieldElement(annotation, encodedRow, encodedCol);
+				new AnnotatedTextFieldElement(annotation, currentPrefixString, program, encodedRow,
+					encodedCol);
+
 			// Space character
 			AttributedString spaceStr = new AttributedString(" ", currentPrefixString.getColor(0),
 				currentPrefixString.getFontMetrics(0), false, null);

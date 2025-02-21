@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,13 +20,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 
+import javax.swing.Icon;
+
 import ghidra.async.AsyncUtils;
-import ghidra.dbg.target.TargetObject;
-import ghidra.dbg.target.schema.*;
-import ghidra.dbg.target.schema.TargetObjectSchema.SchemaName;
 import ghidra.debug.api.target.ActionName;
 import ghidra.trace.model.Trace;
 import ghidra.trace.model.target.TraceObject;
+import ghidra.trace.model.target.schema.*;
+import ghidra.trace.model.target.schema.TraceObjectSchema.SchemaName;
 
 /**
  * A remote method registered by the back-end debugger.
@@ -55,6 +56,27 @@ public interface RemoteMethod {
 	 * @return the action
 	 */
 	ActionName action();
+
+	/**
+	 * A title to display in the UI for this action.
+	 * 
+	 * @return the title
+	 */
+	String display();
+
+	/**
+	 * The icon to display in menu's and in the prompt dialog.
+	 * 
+	 * @return the icon
+	 */
+	Icon icon();
+
+	/**
+	 * Text to display in the OK button of any prompt dialog.
+	 * 
+	 * @return the text
+	 */
+	String okText();
 
 	/**
 	 * A description of the method.
@@ -95,27 +117,32 @@ public interface RemoteMethod {
 	 * Check the type of an argument.
 	 * 
 	 * <p>
-	 * This is a hack, because {@link TargetObjectSchema} expects {@link TargetObject}, or a
+	 * This is a hack, because {@link TraceObjectSchema} expects {@link TargetObject}, or a
 	 * primitive. We instead need {@link TraceObject}. I'd add the method to the schema, except that
 	 * trace stuff is not in its dependencies.
 	 * 
-	 * @param name the name of the parameter
+	 * @param paramName the name of the parameter
+	 * @param schName the name of the parameter's schema
 	 * @param sch the type of the parameter
 	 * @param arg the argument
 	 */
-	static void checkType(String name, TargetObjectSchema sch, Object arg) {
-		if (sch.getType() != TargetObject.class) {
-			if (sch.getType().isInstance(arg)) {
-				return;
+	static void checkType(String paramName, SchemaName schName, TraceObjectSchema sch,
+			Object arg) {
+		// if sch is null, it was definitely an object-type schema without context
+		if (sch != null) {
+			if (sch.getType() != TraceObject.class) {
+				if (sch.getType().isInstance(arg)) {
+					return;
+				}
 			}
-		}
-		else if (arg instanceof TraceObject obj) {
-			if (sch.equals(obj.getTargetSchema())) {
-				return;
+			else if (arg instanceof TraceObject obj) {
+				if (sch.isAssignableFrom(obj.getSchema())) {
+					return;
+				}
 			}
 		}
 		throw new IllegalArgumentException(
-			"For parameter %s: argument %s is not a %s".formatted(name, arg, sch));
+			"For parameter %s: argument %s is not a %s".formatted(paramName, arg, schName));
 	}
 
 	/**
@@ -132,7 +159,7 @@ public interface RemoteMethod {
 	 */
 	default Trace validate(Map<String, Object> arguments) {
 		Trace trace = null;
-		SchemaContext ctx = EnumerableTargetObjectSchema.MinimalSchemaContext.INSTANCE;
+		SchemaContext ctx = PrimitiveTraceObjectSchema.MinimalSchemaContext.INSTANCE;
 		for (Map.Entry<String, RemoteParameter> ent : parameters().entrySet()) {
 			if (!arguments.containsKey(ent.getKey())) {
 				if (ent.getValue().required()) {
@@ -152,8 +179,9 @@ public interface RemoteMethod {
 						"All TraceObject parameters must come from the same trace");
 				}
 			}
-			TargetObjectSchema sch = ctx.getSchema(ent.getValue().type());
-			checkType(ent.getKey(), sch, arg);
+			SchemaName schName = ent.getValue().type();
+			TraceObjectSchema sch = ctx.getSchemaOrNull(schName);
+			checkType(ent.getKey(), schName, sch, arg);
 		}
 		for (Map.Entry<String, Object> ent : arguments.entrySet()) {
 			if (!parameters().containsKey(ent.getKey())) {
@@ -191,6 +219,7 @@ public interface RemoteMethod {
 	 * 
 	 * @param arguments the keyword arguments to the remote method
 	 * @throws IllegalArgumentException if the arguments are not valid
+	 * @return the returned value
 	 */
 	default Object invoke(Map<String, Object> arguments) {
 		try {

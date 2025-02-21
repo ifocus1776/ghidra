@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -63,6 +63,8 @@ public class TerminalProviderTest extends AbstractGhidraHeadedDebuggerTest {
 		terminalService = addPlugin(tool, TerminalPlugin.class);
 		clipboardService = addPlugin(tool, ClipboardPlugin.class);
 
+		env.showFrontEndTool();
+
 		PtyFactory factory = PtyFactory.local();
 		try (Pty pty = factory.openpty()) {
 			Map<String, String> env = new HashMap<>(System.getenv());
@@ -70,13 +72,14 @@ public class TerminalProviderTest extends AbstractGhidraHeadedDebuggerTest {
 			PtySession session = pty.getChild().session(new String[] { "/usr/bin/bash" }, env);
 
 			PtyParent parent = pty.getParent();
+			PtyChild child = pty.getChild();
 			try (Terminal term = terminalService.createWithStreams(Charset.forName("UTF-8"),
 				parent.getInputStream(), parent.getOutputStream())) {
 				term.addTerminalListener(new TerminalListener() {
 					@Override
 					public void resized(short cols, short rows) {
 						System.err.println("resized: " + cols + "x" + rows);
-						parent.setWindowSize(cols, rows);
+						child.setWindowSize(cols, rows);
 					}
 				});
 				session.waitExited();
@@ -101,13 +104,14 @@ public class TerminalProviderTest extends AbstractGhidraHeadedDebuggerTest {
 				pty.getChild().session(new String[] { "C:\\Windows\\system32\\cmd.exe" }, env);
 
 			PtyParent parent = pty.getParent();
+			PtyChild child = pty.getChild();
 			try (Terminal term = terminalService.createWithStreams(Charset.forName("UTF-8"),
 				parent.getInputStream(), parent.getOutputStream())) {
 				term.addTerminalListener(new TerminalListener() {
 					@Override
 					public void resized(short cols, short rows) {
 						System.err.println("resized: " + cols + "x" + rows);
-						parent.setWindowSize(cols, rows);
+						child.setWindowSize(cols, rows);
 					}
 				});
 				session.waitExited();
@@ -150,7 +154,7 @@ public class TerminalProviderTest extends AbstractGhidraHeadedDebuggerTest {
 
 	@Test
 	@SuppressWarnings("resource")
-	public void testFindSimple() throws Exception {
+	public void testFindText() throws Exception {
 		terminalService = addPlugin(tool, TerminalPlugin.class);
 
 		try (DefaultTerminal term = (DefaultTerminal) terminalService
@@ -160,6 +164,38 @@ public class TerminalProviderTest extends AbstractGhidraHeadedDebuggerTest {
 			term.injectDisplayOutput(TEST_CONTENTS);
 
 			term.provider.findDialog.txtFind.setText("term");
+
+			performAction(term.provider.actionFindNext, false);
+			waitForPass(() -> assertSingleSelection(0, 0, 4,
+				term.provider.panel.fieldPanel.getSelection()));
+
+			performAction(term.provider.actionFindNext, false);
+			waitForPass(() -> assertSingleSelection(0, 5, 9,
+				term.provider.panel.fieldPanel.getSelection()));
+
+			performAction(term.provider.actionFindNext, false);
+			waitForPass(() -> assertSingleSelection(1, 2, 6,
+				term.provider.panel.fieldPanel.getSelection()));
+
+			performAction(term.provider.actionFindNext, false);
+			OkDialog dialog = waitForInfoDialog();
+			assertEquals("String not found", dialog.getMessage());
+			dialog.close();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("resource")
+	public void testFindTextCaps() throws Exception {
+		terminalService = addPlugin(tool, TerminalPlugin.class);
+
+		try (DefaultTerminal term = (DefaultTerminal) terminalService
+				.createNullTerminal(Charset.forName("UTF-8"), buf -> {
+				})) {
+			term.setFixedSize(80, 25);
+			term.injectDisplayOutput(TEST_CONTENTS);
+
+			term.provider.findDialog.txtFind.setText("TERM");
 
 			performAction(term.provider.actionFindNext, false);
 			waitForPass(() -> assertSingleSelection(0, 0, 4,
@@ -310,6 +346,44 @@ public class TerminalProviderTest extends AbstractGhidraHeadedDebuggerTest {
 
 	@Test
 	@SuppressWarnings("resource")
+	public void testFindRegexCaps() throws Exception {
+		terminalService = addPlugin(tool, TerminalPlugin.class);
+
+		try (DefaultTerminal term = (DefaultTerminal) terminalService
+				.createNullTerminal(Charset.forName("UTF-8"), buf -> {
+				})) {
+			term.setFixedSize(80, 25);
+			term.injectDisplayOutput(TEST_CONTENTS);
+
+			term.provider.findDialog.txtFind.setText("o?TERM");
+			term.provider.findDialog.cbRegex.setSelected(true);
+
+			performAction(term.provider.actionFindNext, false);
+			waitForPass(() -> assertSingleSelection(0, 0, 4,
+				term.provider.panel.fieldPanel.getSelection()));
+
+			performAction(term.provider.actionFindNext, false);
+			waitForPass(() -> assertSingleSelection(0, 5, 9,
+				term.provider.panel.fieldPanel.getSelection()));
+
+			performAction(term.provider.actionFindNext, false);
+			waitForPass(() -> assertSingleSelection(1, 1, 6,
+				term.provider.panel.fieldPanel.getSelection()));
+
+			// NB. the o is optional, so it finds a subrange of the previous result
+			performAction(term.provider.actionFindNext, false);
+			waitForPass(() -> assertSingleSelection(1, 2, 6,
+				term.provider.panel.fieldPanel.getSelection()));
+
+			performAction(term.provider.actionFindNext, false);
+			OkDialog dialog = waitForInfoDialog();
+			assertEquals("String not found", dialog.getMessage());
+			dialog.close();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("resource")
 	public void testFindPrevious() throws Exception {
 		terminalService = addPlugin(tool, TerminalPlugin.class);
 
@@ -407,6 +481,23 @@ public class TerminalProviderTest extends AbstractGhidraHeadedDebuggerTest {
 			OkDialog dialog = waitForInfoDialog();
 			assertEquals("String not found", dialog.getMessage());
 			dialog.close();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("resource")
+	public void testGetFullText() throws Exception {
+		terminalService = addPlugin(tool, TerminalPlugin.class);
+
+		try (DefaultTerminal term = (DefaultTerminal) terminalService
+				.createNullTerminal(Charset.forName("UTF-8"), buf -> {
+				})) {
+			term.setFixedSize(80, 25);
+			term.injectDisplayOutput(TEST_CONTENTS);
+
+			assertEquals("""
+					term Term
+					noterm""", term.getFullText().trim());
 		}
 	}
 

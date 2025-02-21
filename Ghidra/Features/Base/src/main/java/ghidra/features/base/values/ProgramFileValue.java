@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -27,6 +27,8 @@ import ghidra.framework.main.DataTreeDialog;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.Project;
 import ghidra.program.model.listing.Program;
+import ghidra.util.SystemUtilities;
+import ghidra.util.VersionExceptionHandler;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.exception.VersionException;
 import ghidra.util.task.TaskMonitor;
@@ -86,31 +88,52 @@ public class ProgramFileValue extends ProjectFileValue {
 	 * while some object is using it, the object itself is typically passed in as
 	 * the consumer. For example, when used in a script, passing in the java keyword "this" as the
 	 * consumer will make the script itself the consumer.
-	 * <P>
+	 * 
 	 * @param consumer the consumer to be used to open the program
 	 * @param tool optional tool that if non-null, the program will also be opened in the tool
+	 * @param upgradeIfNeeded if true, program will be upgraded if needed and possible. If false,
+	 * the program will only be upgraded after first prompting the user. In headless mode, it will
+	 * attempt to upgrade only if the parameter is true.
 	 * @param monitor task monitor for cancelling the open program.
-	 * @return a program for the current program value value. If the current program file value
-	 * is null, then null will be returned.
-	 * @throws VersionException if the Program being opened is an older version than the 
+	 * @return a program for the currently selected program file. If no file chosen, returns null
+	 * @throws VersionException if the Program is out-of-date from the version of GHIDRA and an 
+	 * upgrade was not been performed. In non-headless mode, the user will have already been
+	 * notified via a popup dialog.
 	 * current Ghidra Program version.
 	 * @throws IOException if there is an error accessing the Program's DomainObject
 	 * @throws CancelledException if the operation is cancelled
 	 */
-	public Program openProgram(Object consumer, Tool tool, TaskMonitor monitor)
-			throws VersionException, IOException, CancelledException {
+	public Program openProgram(Object consumer, Tool tool, boolean upgradeIfNeeded,
+			TaskMonitor monitor) throws VersionException, IOException, CancelledException {
 
 		DomainFile domainFile = getValue();
 		if (domainFile == null) {
 			return null;
 		}
 
-		Program program = (Program) domainFile.getDomainObject(consumer, true, false, monitor);
+		Program program = doOpenProgram(domainFile, consumer, upgradeIfNeeded, monitor);
 
 		if (tool != null && program != null) {
 			tool.getService(ProgramManager.class).openProgram(program);
 		}
 		return program;
+	}
+
+	private Program doOpenProgram(DomainFile domainFile, Object consumer, boolean upgradeIfNeeded,
+			TaskMonitor monitor) throws VersionException, IOException, CancelledException {
+
+		try {
+			return (Program) domainFile.getDomainObject(consumer, upgradeIfNeeded, false, monitor);
+		}
+		catch (VersionException e) {
+			if (SystemUtilities.isInHeadlessMode()) {
+				throw e;
+			}
+			if (VersionExceptionHandler.isUpgradeOK(null, domainFile, "Open ", e)) {
+				return (Program) domainFile.getDomainObject(consumer, true, false, monitor);
+			}
+			throw e;
+		}
 	}
 
 }

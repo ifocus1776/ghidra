@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -55,7 +55,6 @@ import ghidra.util.task.TaskMonitor;
  * memory region where a mapped byte has a value of 0 or 1 only.  Byte read/write operations are 
  * passed-through to the corresponding bit within the mapped region.</li>
  * </ul>
- * </p>
  * <p>
  * <u>Overlay Blocks</u>
  * An overlay memory block provides the ability to define alternate content for a physical memory
@@ -151,18 +150,6 @@ public interface Memory extends AddressSetView {
 		MemoryBlock block = getBlock(addr);
 		return block != null && block.isExternalBlock();
 	}
-
-	/**
-	 * Sets the live memory handler
-	 * @param handler the live memory handler
-	 */
-	public void setLiveMemoryHandler(LiveMemoryHandler handler);
-
-	/**
-	 * Returns the live memory handler instance used by this memory.
-	 * @return the live memory handler
-	 */
-	public LiveMemoryHandler getLiveMemoryHandler();
 
 	/**
 	 * Create an initialized memory block based upon a data {@link InputStream} and add it to 
@@ -836,7 +823,7 @@ public interface Memory extends AddressSetView {
 			throws MemoryAccessException;
 
 	/**
-	 * Write short at addr in big endian order.
+	 * Write short at addr in default endian order.
 	 *
 	 * @param addr the Address of the short.
 	 * @param value the data to write.
@@ -857,7 +844,7 @@ public interface Memory extends AddressSetView {
 	public void setShort(Address addr, short value, boolean bigEndian) throws MemoryAccessException;
 
 	/**
-	 * Write int at addr.
+	 * Write int at addr in the default endian order.
 	 *
 	 * @param addr the Address of the int.
 	 * @param value the data to write.
@@ -879,7 +866,7 @@ public interface Memory extends AddressSetView {
 	public void setInt(Address addr, int value, boolean bigEndian) throws MemoryAccessException;
 
 	/**
-	 * Write long at addr.
+	 * Write long at addr in the default endian order.
 	 *
 	 * @param addr the Address of the long.
 	 * @param value the data to write.

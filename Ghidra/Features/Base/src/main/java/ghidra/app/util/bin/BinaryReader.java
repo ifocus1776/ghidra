@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -80,7 +80,6 @@ public class BinaryReader {
 
 	/**
 	 * Reads and returns an object from the current position in the specified input stream.
-	 * <p>
 	 * 
 	 * @param <T> the type of object that will be returned
 	 */
@@ -415,7 +414,19 @@ public class BinaryReader {
 	 * @exception IOException if an I/O error occurs
 	 */
 	public short readNextShort() throws IOException {
-		short s = readShort(currentIndex);
+		return readNextShort(converter);
+	}
+
+	/**
+	 * Reads the short at the current index and then increments the current
+	 * index by <code>SIZEOF_SHORT</code>.
+	 * 
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @return the short at the current index
+	 * @exception IOException if an I/O error occurs
+	 */
+	public short readNextShort(DataConverter dc) throws IOException {
+		short s = readShort(dc, currentIndex);
 		currentIndex += SIZEOF_SHORT;
 		return s;
 	}
@@ -427,7 +438,19 @@ public class BinaryReader {
 	 * @exception IOException if an I/O error occurs
 	 */
 	public int readNextUnsignedShort() throws IOException {
-		return Short.toUnsignedInt(readNextShort());
+		return Short.toUnsignedInt(readNextShort(converter));
+	}
+
+	/**
+	 * Reads the unsigned short at the current index and then increments the current
+	 * index by <code>SIZEOF_SHORT</code>.
+	 * 
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @return the unsigned short at the current index, as an int
+	 * @exception IOException if an I/O error occurs
+	 */
+	public int readNextUnsignedShort(DataConverter dc) throws IOException {
+		return Short.toUnsignedInt(readNextShort(dc));
 	}
 
 	/**
@@ -437,7 +460,19 @@ public class BinaryReader {
 	 * @exception IOException if an I/O error occurs
 	 */
 	public int readNextInt() throws IOException {
-		int i = readInt(currentIndex);
+		return readNextInt(converter);
+	}
+
+	/**
+	 * Reads the integer at the current index and then increments the current
+	 * index by <code>SIZEOF_INT</code>.
+	 * 
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @return the integer at the current index
+	 * @exception IOException if an I/O error occurs
+	 */
+	public int readNextInt(DataConverter dc) throws IOException {
+		int i = readInt(dc, currentIndex);
 		currentIndex += SIZEOF_INT;
 		return i;
 	}
@@ -449,7 +484,19 @@ public class BinaryReader {
 	 * @exception IOException if an I/O error occurs
 	 */
 	public long readNextUnsignedInt() throws IOException {
-		return Integer.toUnsignedLong(readNextInt());
+		return Integer.toUnsignedLong(readNextInt(converter));
+	}
+
+	/**
+	 * Reads the unsigned integer at the current index and then increments the current
+	 * index by <code>SIZEOF_INT</code>.
+	 * 
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @return the unsigned integer at the current index, as a long
+	 * @exception IOException if an I/O error occurs
+	 */
+	public long readNextUnsignedInt(DataConverter dc) throws IOException {
+		return Integer.toUnsignedLong(readNextInt(dc));
 	}
 
 	/**
@@ -459,7 +506,19 @@ public class BinaryReader {
 	 * @exception IOException if an I/O error occurs
 	 */
 	public long readNextLong() throws IOException {
-		long l = readLong(currentIndex);
+		return readNextLong(converter);
+	}
+
+	/**
+	 * Reads the long at the current index and then increments the current
+	 * index by <code>SIZEOF_LONG</code>.
+	 * 
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @return the long at the current index
+	 * @exception IOException if an I/O error occurs
+	 */
+	public long readNextLong(DataConverter dc) throws IOException {
+		long l = readLong(dc, currentIndex);
 		currentIndex += SIZEOF_LONG;
 		return l;
 	}
@@ -469,10 +528,22 @@ public class BinaryReader {
 	 * 
 	 * @param len the number of bytes that the integer occupies, 1 to 8
 	 * @return value of requested length, with sign bit extended, in a long
-	 * @throws IOException 
+	 * @exception IOException if an I/O error occurs
 	 */
 	public long readNextValue(int len) throws IOException {
-		long result = readValue(currentIndex, len);
+		return readNextValue(converter, len);
+	}
+
+	/**
+	 * Returns the signed value of the integer (of the specified length) at the current index.
+	 * 
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @param len the number of bytes that the integer occupies, 1 to 8
+	 * @return value of requested length, with sign bit extended, in a long
+	 * @exception IOException if an I/O error occurs
+	 */
+	public long readNextValue(DataConverter dc, int len) throws IOException {
+		long result = readValue(dc, currentIndex, len);
 		currentIndex += len;
 		return result;
 	}
@@ -482,10 +553,22 @@ public class BinaryReader {
 	 * 
 	 * @param len the number of bytes that the integer occupies, 1 to 8
 	 * @return unsigned value of requested length, in a long
-	 * @throws IOException 
+	 * @exception IOException if an I/O error occurs
 	 */
 	public long readNextUnsignedValue(int len) throws IOException {
-		long result = readUnsignedValue(currentIndex, len);
+		return readNextUnsignedValue(converter, len);
+	}
+
+	/**
+	 * Returns the unsigned value of the integer (of the specified length) at the current index.
+	 * 
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @param len the number of bytes that the integer occupies, 1 to 8
+	 * @return unsigned value of requested length, in a long
+	 * @exception IOException if an I/O error occurs
+	 */
+	public long readNextUnsignedValue(DataConverter dc, int len) throws IOException {
+		long result = readUnsignedValue(dc, currentIndex, len);
 		currentIndex += len;
 		return result;
 	}
@@ -495,7 +578,6 @@ public class BinaryReader {
 	 * advancing the current index by the length of the string that was found.
 	 * <p>
 	 * Note: this method no longer trims() the returned String.
-	 * <p>
 	 * 
 	 * @return the US-ASCII string at the current index
 	 * @exception IOException if an I/O error occurs
@@ -512,7 +594,7 @@ public class BinaryReader {
 	 * a string from a fixed length field that is padded with trailing null chars)
 	 * <p>
 	 * Note: this method no longer trims() the returned String.
-	 * <p>
+	 * 
 	 * @param length number of bytes to read
 	 * @return the US-ASCII string at the current index
 	 */
@@ -523,7 +605,6 @@ public class BinaryReader {
 	/**
 	 * Reads a null-terminated UTF-16 Unicode string at the current index, 
 	 * advancing the current index by the length of the string that was found.
-	 * <p>
 	 * 
 	 * @return UTF-16 string at the current index
 	 * @exception IOException if an I/O error occurs
@@ -535,7 +616,6 @@ public class BinaryReader {
 	/**
 	 * Reads a fixed length UTF-16 Unicode string at the current index,
 	 * advancing the current index by the length of the string that was found.
-	 * <p>
 	 *
 	 * @param charCount number of UTF-16 characters to read (not bytes)
 	 * @return the UTF-16 Unicode string at the current index
@@ -548,7 +628,6 @@ public class BinaryReader {
 	/**
 	 * Reads a null-terminated UTF-8 string at the current index, 
 	 * advancing the current index by the length of the string that was found.
-	 * <p>
 	 * 
 	 * @return UTF-8 string at the current index
 	 * @exception IOException if an I/O error occurs
@@ -560,7 +639,6 @@ public class BinaryReader {
 	/**
 	 * Reads a fixed length UTF-8 string the current index,
 	 * advancing the current index by the length of the string that was found.
-	 * <p>
 	 *
 	 * @param length number of bytes to read
 	 * @return the UTF-8 string at the current index
@@ -574,7 +652,7 @@ public class BinaryReader {
 	 * Reads a null terminated string starting at the current index, 
 	 * using a specific {@link Charset}, advancing the current index by the length of 
 	 * the string that was found.
-	 * <p>
+	 * 
 	 * @param charset {@link Charset}, see {@link StandardCharsets}
 	 * @param charLen number of bytes in each character
 	 * @return the string
@@ -595,7 +673,7 @@ public class BinaryReader {
 	 * <p>
 	 * Trailing null terminator characters will be removed.  (suitable for reading
 	 * a string from a fixed length field that is padded with trailing null chars)
-	 * <p>
+	 * 
 	 * @param charCount the number of charLen character elements to read
 	 * @param charset {@link Charset}, see {@link StandardCharsets}
 	 * @param charLen number of bytes in each character
@@ -684,7 +762,25 @@ public class BinaryReader {
 	 * @throws InvalidDataException if value can not be held in a java integer
 	 */
 	public int readNextUnsignedIntExact() throws IOException, InvalidDataException {
-		long i = readNextUnsignedInt();
+		return readNextUnsignedIntExact(converter);
+	}
+
+	/**
+	 * Reads an unsigned int32 value, and returns it as a java int (instead of a java long).
+	 * <p>
+	 * If the value is outside the range of 0..Integer.MAX_VALUE, an InvalidDataException is thrown.
+	 * <p>
+	 * Useful for reading uint32 values that are going to be used in java to allocate arrays or
+	 * other similar cases where the value must be a java integer.
+	 *    
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @return the uint32 value read from the stream, if it fits into the range [0..MAX_VALUE] 
+	 * of a java integer 
+	 * @throws IOException if there was an error reading
+	 * @throws InvalidDataException if value can not be held in a java integer
+	 */
+	public int readNextUnsignedIntExact(DataConverter dc) throws IOException, InvalidDataException {
+		long i = readNextUnsignedInt(dc);
 		ensureInt32u(i);
 		return (int) i;
 	}
@@ -749,7 +845,6 @@ public class BinaryReader {
 	 * the first null character.
 	 * <p>
 	 * Note: this method no longer trims() the returned String.
-	 * <p>
 	 * 
 	 * @param index starting position of the string
 	 * @return US-ASCII string, excluding the trailing null terminator character
@@ -766,7 +861,7 @@ public class BinaryReader {
 	 * a string from a fixed length field that is padded with trailing null chars)
 	 * <p>
 	 * Note: this method no longer trims() the returned String.
-	 * <p>
+	 * 
 	 * @param index where the string begins
 	 * @param length number of bytes to read
 	 * @return the US-ASCII string
@@ -781,7 +876,7 @@ public class BinaryReader {
 	 * the pre-specified {@link #setLittleEndian(boolean) endianness}.
 	 * <p>
 	 * The end of the string is denoted by a two-byte (ie. short) <code>null</code> character.
-	 * <p>
+	 * 
 	 * @param index where the UTF-16 Unicode string begins
 	 * @return the UTF-16 Unicode string
 	 * @exception IOException if an I/O error occurs
@@ -797,7 +892,7 @@ public class BinaryReader {
 	 * <p>
 	 * Trailing null terminator characters will be removed.  (suitable for reading
 	 * a string from a fixed length field that is padded with trailing null chars)
-	 * <p>
+	 * 
 	 * @param index the index where the UTF-16 Unicode string begins
 	 * @param charCount the number of UTF-16 character elements to read.
 	 * @return the UTF-16 Unicode string
@@ -809,7 +904,7 @@ public class BinaryReader {
 
 	/**
 	 * Reads a null-terminated UTF-8 string starting at <code>index</code>.
-	 * <p>
+	 * 
 	 * @param index where the UTF-8 string begins
 	 * @return the string
 	 * @exception IOException if an I/O error occurs
@@ -824,7 +919,7 @@ public class BinaryReader {
 	 * <p>
 	 * Trailing null terminator characters will be removed.  (suitable for reading
 	 * a string from a fixed length field that is padded with trailing null chars)
-	 * <p>
+	 * 
 	 * @param index the index where the UTF-8 string begins
 	 * @param length the number of bytes to read
 	 * @return the string
@@ -840,7 +935,7 @@ public class BinaryReader {
 	 * <p>
 	 * Trailing null terminator characters will be removed.  (suitable for reading
 	 * a string from a fixed length field that is padded with trailing null chars)
-	 * <p>
+	 * 
 	 * @param index the index where the string begins
 	 * @param charCount the number of charLen character elements to read
 	 * @param charset {@link Charset}, see {@link StandardCharsets}
@@ -863,7 +958,7 @@ public class BinaryReader {
 	/**
 	 * Reads a null-terminated string starting at <code>index</code>, using a specific
 	 * {@link Charset}.
-	 * <p>
+	 * 
 	 * @param index where the string begins
 	 * @param charset {@link Charset}, see {@link StandardCharsets}
 	 * @param charLen number of bytes in each character
@@ -908,8 +1003,19 @@ public class BinaryReader {
 	 * @exception IOException if an I/O error occurs
 	 */
 	public short readShort(long index) throws IOException {
+		return readShort(converter, index);
+	}
+
+	/**
+	 * Returns the signed SHORT at <code>index</code>.
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @param index the index where the SHORT begins
+	 * @return the signed SHORT
+	 * @exception IOException if an I/O error occurs
+	 */
+	public short readShort(DataConverter dc, long index) throws IOException {
 		byte[] bytes = provider.readBytes(index, SIZEOF_SHORT);
-		return converter.getShort(bytes);
+		return dc.getShort(bytes);
 	}
 
 	/**
@@ -919,7 +1025,18 @@ public class BinaryReader {
 	 * @exception IOException if an I/O error occurs
 	 */
 	public int readUnsignedShort(long index) throws IOException {
-		return Short.toUnsignedInt(readShort(index));
+		return Short.toUnsignedInt(readShort(converter, index));
+	}
+
+	/**
+	 * Returns the unsigned SHORT at <code>index</code>.
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @param index the index where the SHORT begins
+	 * @return the unsigned SHORT as an int
+	 * @exception IOException if an I/O error occurs
+	 */
+	public int readUnsignedShort(DataConverter dc, long index) throws IOException {
+		return Short.toUnsignedInt(readShort(dc, index));
 	}
 
 	/**
@@ -929,8 +1046,19 @@ public class BinaryReader {
 	 * @exception IOException if an I/O error occurs
 	 */
 	public int readInt(long index) throws IOException {
+		return readInt(converter, index);
+	}
+
+	/**
+	 * Returns the signed INTEGER at <code>index</code>.
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @param index the index where the INTEGER begins
+	 * @return the signed INTEGER
+	 * @exception IOException if an I/O error occurs
+	 */
+	public int readInt(DataConverter dc, long index) throws IOException {
 		byte[] bytes = provider.readBytes(index, SIZEOF_INT);
-		return converter.getInt(bytes);
+		return dc.getInt(bytes);
 	}
 
 	/**
@@ -940,7 +1068,18 @@ public class BinaryReader {
 	 * @exception IOException if an I/O error occurs
 	 */
 	public long readUnsignedInt(long index) throws IOException {
-		return Integer.toUnsignedLong(readInt(index));
+		return Integer.toUnsignedLong(readInt(converter, index));
+	}
+
+	/**
+	 * Returns the unsigned INTEGER at <code>index</code>.
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @param index the index where the INTEGER begins
+	 * @return the unsigned INTEGER as a long
+	 * @exception IOException if an I/O error occurs
+	 */
+	public long readUnsignedInt(DataConverter dc, long index) throws IOException {
+		return Integer.toUnsignedLong(readInt(dc, index));
 	}
 
 	/**
@@ -950,8 +1089,19 @@ public class BinaryReader {
 	 * @exception IOException if an I/O error occurs
 	 */
 	public long readLong(long index) throws IOException {
+		return readLong(converter, index);
+	}
+
+	/**
+	 * Returns the signed LONG at <code>index</code>.
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @param index the index where the LONG begins
+	 * @return the LONG
+	 * @exception IOException if an I/O error occurs
+	 */
+	public long readLong(DataConverter dc, long index) throws IOException {
 		byte[] bytes = provider.readBytes(index, SIZEOF_LONG);
-		return converter.getLong(bytes);
+		return dc.getLong(bytes);
 	}
 
 	/**
@@ -960,11 +1110,24 @@ public class BinaryReader {
 	 * @param index where the value begins 
 	 * @param len the number of bytes that the integer occupies, 1 to 8
 	 * @return value of requested length, with sign bit extended, in a long
-	 * @throws IOException 
+	 * @exception IOException if an I/O error occurs
 	 */
 	public long readValue(long index, int len) throws IOException {
+		return readValue(converter, index, len);
+	}
+
+	/**
+	 * Returns the signed value of the integer (of the specified length) at the specified offset.
+	 * 
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @param index where the value begins 
+	 * @param len the number of bytes that the integer occupies, 1 to 8
+	 * @return value of requested length, with sign bit extended, in a long
+	 * @exception IOException if an I/O error occurs
+	 */
+	public long readValue(DataConverter dc, long index, int len) throws IOException {
 		byte[] bytes = provider.readBytes(index, len);
-		return converter.getSignedValue(bytes, len);
+		return dc.getSignedValue(bytes, len);
 	}
 
 	/**
@@ -973,11 +1136,24 @@ public class BinaryReader {
 	 * @param index where the value begins 
 	 * @param len the number of bytes that the integer occupies, 1 to 8
 	 * @return unsigned value of requested length, in a long
-	 * @throws IOException 
+	 * @exception IOException if an I/O error occurs
 	 */
 	public long readUnsignedValue(long index, int len) throws IOException {
+		return readUnsignedValue(converter, index, len);
+	}
+
+	/**
+	 * Returns the unsigned value of the integer (of the specified length) at the specified offset.
+	 * 
+	 * @param dc {@link BigEndianDataConverter BE} or {@link LittleEndianDataConverter LE}
+	 * @param index where the value begins 
+	 * @param len the number of bytes that the integer occupies, 1 to 8
+	 * @return unsigned value of requested length, in a long
+	 * @exception IOException if an I/O error occurs
+	 */
+	public long readUnsignedValue(DataConverter dc, long index, int len) throws IOException {
 		byte[] bytes = provider.readBytes(index, len);
-		return converter.getValue(bytes, len);
+		return dc.getValue(bytes, len); // NOTE: getValue() is unsigned so this is all good
 	}
 
 	/**

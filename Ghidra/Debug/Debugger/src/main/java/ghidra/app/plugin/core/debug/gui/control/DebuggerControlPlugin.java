@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -30,7 +30,6 @@ import ghidra.app.plugin.core.debug.AbstractDebuggerPlugin;
 import ghidra.app.plugin.core.debug.DebuggerPluginPackage;
 import ghidra.app.plugin.core.debug.event.TraceActivatedPluginEvent;
 import ghidra.app.plugin.core.debug.event.TraceClosedPluginEvent;
-import ghidra.app.plugin.core.debug.gui.model.DebuggerObjectActionContext;
 import ghidra.app.services.*;
 import ghidra.app.services.DebuggerControlService.ControlModeChangeListener;
 import ghidra.app.services.DebuggerEmulationService.CachedEmulator;
@@ -39,6 +38,7 @@ import ghidra.app.services.DebuggerTraceManagerService.ActivationCause;
 import ghidra.async.AsyncUtils;
 import ghidra.debug.api.control.ControlMode;
 import ghidra.debug.api.emulation.DebuggerPcodeMachine;
+import ghidra.debug.api.model.DebuggerObjectActionContext;
 import ghidra.debug.api.target.ActionName;
 import ghidra.debug.api.target.Target;
 import ghidra.debug.api.target.Target.ActionEntry;
@@ -49,15 +49,12 @@ import ghidra.framework.plugintool.util.PluginStatus;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
 import ghidra.trace.model.*;
-import ghidra.trace.model.Trace.TraceObjectChangeType;
 import ghidra.trace.model.target.TraceObjectValue;
 import ghidra.trace.model.time.schedule.Scheduler;
 import ghidra.trace.model.time.schedule.TraceSchedule;
+import ghidra.trace.util.TraceEvents;
 import ghidra.util.Msg;
 import ghidra.util.Swing;
-import ghidra.util.exception.CancelledException;
-import ghidra.util.task.Task;
-import ghidra.util.task.TaskMonitor;
 
 @PluginInfo(
 	shortDescription = "Debugger global controls",
@@ -78,9 +75,9 @@ public class DebuggerControlPlugin extends AbstractDebuggerPlugin
 
 	private final TraceDomainObjectListener listenerForObjects = new TraceDomainObjectListener() {
 		{
-			listenFor(TraceObjectChangeType.VALUE_CREATED, this::valueChanged);
-			listenFor(TraceObjectChangeType.VALUE_DELETED, this::valueChanged);
-			listenFor(TraceObjectChangeType.VALUE_LIFESPAN_CHANGED, this::valueLifespanChanged);
+			listenFor(TraceEvents.VALUE_CREATED, this::valueChanged);
+			listenFor(TraceEvents.VALUE_DELETED, this::valueChanged);
+			listenFor(TraceEvents.VALUE_LIFESPAN_CHANGED, this::valueLifespanChanged);
 		}
 
 		private void valueChanged(TraceObjectValue value) {
@@ -146,6 +143,8 @@ public class DebuggerControlPlugin extends AbstractDebuggerPlugin
 	private DebuggerControlService controlService;
 	// @AutoServiceConsumed // via method
 	private DebuggerEmulationService emulationService;
+	@AutoServiceConsumed
+	private ProgressService progressService;
 
 	public DebuggerControlPlugin(PluginTool tool) {
 		super(tool);
@@ -282,10 +281,6 @@ public class DebuggerControlPlugin extends AbstractDebuggerPlugin
 		updateActions();
 	}
 
-	protected void runTask(String title, ActionEntry entry) {
-		tool.execute(new TargetActionTask(title, entry));
-	}
-
 	protected void addTargetStepExtActions(Target target) {
 		for (ActionEntry entry : target.collectActions(ActionName.STEP_EXT, context).values()) {
 			if (entry.requiresPrompt()) {
@@ -293,8 +288,9 @@ public class DebuggerControlPlugin extends AbstractDebuggerPlugin
 			}
 			actionsTargetStepExt.add(TargetStepExtAction.builder(entry.display(), this)
 					.description(entry.details())
+					.toolBarIcon(entry.icon())
 					.enabledWhen(ctx -> entry.isEnabled())
-					.onAction(ctx -> runTask(entry.display(), entry))
+					.onAction(ctx -> TargetActionTask.runAction(tool, entry.display(), entry))
 					.build());
 		}
 	}
@@ -359,18 +355,7 @@ public class DebuggerControlPlugin extends AbstractDebuggerPlugin
 		if (target == null) {
 			return;
 		}
-		tool.execute(new Task("Disconnect", false, false, false) {
-			@Override
-			public void run(TaskMonitor monitor) throws CancelledException {
-				try {
-					target.disconnect();
-				}
-				catch (Exception e) {
-					tool.setStatusInfo("Disconnect failed: " + e, true);
-					Msg.error(this, "Disconnect failed: " + e, e);
-				}
-			}
-		});
+		TargetActionTask.executeTask(tool, new DisconnectTask(tool, List.of(target)));
 	}
 
 	private boolean haveEmuAndTrace() {

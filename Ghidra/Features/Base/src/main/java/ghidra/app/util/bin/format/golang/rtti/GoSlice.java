@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -25,6 +25,7 @@ import ghidra.app.util.bin.format.golang.rtti.types.GoSliceType;
 import ghidra.app.util.bin.format.golang.structmapping.*;
 import ghidra.program.model.address.*;
 import ghidra.program.model.data.*;
+import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.mem.Memory;
 import ghidra.util.Msg;
 import ghidra.util.exception.CancelledException;
@@ -37,7 +38,6 @@ import ghidra.util.exception.CancelledException;
  * <p>
  * Like java's type erasure for generics, a golang slice instance does not have type information 
  * about the elements found in the array blob (nor the size of the blob).
- * <p>
  */
 @StructureMapping(structureName = "runtime.slice")
 public class GoSlice implements StructureMarkup<GoSlice> {
@@ -127,6 +127,12 @@ public class GoSlice implements StructureMarkup<GoSlice> {
 		try {
 			Memory memory = programContext.getProgram().getMemory();
 			Address arrayAddr = getArrayAddress();
+			Instruction arrayInstr =
+				programContext.getProgram().getListing().getInstructionAt(arrayAddr);
+			if (arrayInstr != null) {
+				// if slice array is pointing at an instruction (commonly in switch tables)
+				return false;
+			}
 			return memory.contains(arrayAddr) &&
 				memory.contains(arrayAddr.addNoWrap(len * elementSize));
 		}
@@ -262,7 +268,7 @@ public class GoSlice implements StructureMarkup<GoSlice> {
 
 	/**
 	 * Treats this slice as a array of unsigned integers, of the specified intSize.
-	 * <p>
+	 * 
 	 * @param intSize size of integer
 	 * @return array of longs, containing the (possibly smaller) integers contained in the slice
 	 * @throws IOException if error reading

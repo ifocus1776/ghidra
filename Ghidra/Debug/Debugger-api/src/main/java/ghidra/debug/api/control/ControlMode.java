@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -27,7 +27,6 @@ import generic.theme.GIcon;
 import ghidra.app.services.DebuggerEmulationService;
 import ghidra.app.services.DebuggerTraceManagerService;
 import ghidra.app.services.DebuggerTraceManagerService.ActivationCause;
-import ghidra.async.AsyncUtils;
 import ghidra.debug.api.target.Target;
 import ghidra.debug.api.tracemgr.DebuggerCoordinates;
 import ghidra.framework.plugintool.PluginTool;
@@ -92,12 +91,12 @@ public enum ControlMode {
 
 		@Override
 		public boolean isSelectable(DebuggerCoordinates coordinates) {
-			return coordinates.isAliveAndPresent();
+			return coordinates.isAlive();
 		}
 
 		@Override
 		public ControlMode getAlternative(DebuggerCoordinates coordinates) {
-			return RO_TRACE;
+			return RW_EMULATOR;
 		}
 	},
 	/**
@@ -126,7 +125,7 @@ public enum ControlMode {
 				return false;
 			}
 			Target target = coordinates.getTarget();
-			return target.isVariableExists(coordinates.getPlatform(),
+			return target.isVariableExists(platformFor(coordinates, address),
 				coordinates.getThread(), coordinates.getFrame(), address, length);
 		}
 
@@ -142,8 +141,8 @@ public enum ControlMode {
 				return CompletableFuture
 						.failedFuture(new MemoryAccessException("View is not the present"));
 			}
-			return target.writeVariableAsync(coordinates.getPlatform(), coordinates.getThread(),
-				coordinates.getFrame(), address, data);
+			return target.writeVariableAsync(platformFor(coordinates, address),
+				coordinates.getThread(), coordinates.getFrame(), address, data);
 		}
 
 		@Override
@@ -153,7 +152,7 @@ public enum ControlMode {
 
 		@Override
 		public boolean isSelectable(DebuggerCoordinates coordinates) {
-			return coordinates.isAliveAndPresent();
+			return coordinates.isAlive();
 		}
 
 		@Override
@@ -228,7 +227,7 @@ public enum ControlMode {
 		public CompletableFuture<Void> setVariable(PluginTool tool,
 				DebuggerCoordinates coordinates, Address guestAddress, byte[] data) {
 			Trace trace = coordinates.getTrace();
-			TracePlatform platform = coordinates.getPlatform();
+			TracePlatform platform = platformFor(coordinates, guestAddress);
 			long snap = coordinates.getViewSnap();
 			Address hostAddress = platform.mapGuestToHost(guestAddress);
 			if (hostAddress == null) {
@@ -258,7 +257,7 @@ public enum ControlMode {
 					return CompletableFuture.failedFuture(new MemoryAccessException());
 				}
 			}
-			return AsyncUtils.nil();
+			return CompletableFuture.completedFuture(null);
 		}
 
 		@Override
@@ -374,6 +373,47 @@ public enum ControlMode {
 	 * @return true to follow, false if not
 	 */
 	public abstract boolean followsPresent();
+
+	/**
+	 * Validate and/or adjust the given coordinates pre-activation
+	 * 
+	 * <p>
+	 * This is called by the trace manager whenever there is a request to activate new coordinates.
+	 * The control mode may adjust or reject the request before the trace manager actually performs
+	 * and notifies the activation.
+	 * 
+	 * @param tool the tool for displaying status messages
+	 * @param coordinates the requested coordinates
+	 * @param cause the cause of the activation
+	 * @return the effective coordinates or null to reject
+	 */
+	public DebuggerCoordinates validateCoordinates(PluginTool tool,
+			DebuggerCoordinates coordinates, ActivationCause cause) {
+		if (!followsPresent()) {
+			return coordinates;
+		}
+		Target target = coordinates.getTarget();
+		if (target == null) {
+			return coordinates;
+		}
+		if (cause == ActivationCause.USER &&
+			(!coordinates.getTime().isSnapOnly() || coordinates.getSnap() != target.getSnap())) {
+			tool.setStatusInfo(
+				"Cannot navigate time in %s mode. Switch to Trace or Emulate mode first."
+						.formatted(name),
+				true);
+			return null;
+		}
+		return coordinates;
+	}
+
+	protected TracePlatform platformFor(DebuggerCoordinates coordinates, Address address) {
+		if (address.isRegisterAddress()) {
+			return coordinates.getPlatform();
+		}
+		// This seems odd, but the memory UI components are displaying *host* addresses.
+		return coordinates.getTrace().getPlatformManager().getHostPlatform();
+	}
 
 	/**
 	 * Check if (broadly speaking) the mode supports editing the given coordinates

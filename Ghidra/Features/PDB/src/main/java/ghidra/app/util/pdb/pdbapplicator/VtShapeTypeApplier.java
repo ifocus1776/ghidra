@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -28,12 +28,12 @@ import ghidra.util.exception.CancelledException;
 /**
  * Applier for {@link VtShapeMsType} types.
  */
-public class VtShapeTypeApplier extends MsTypeApplier {
+public class VtShapeTypeApplier extends MsDataTypeApplier {
 
 	// Intended for: VtShapeMsType
 	/**
-	 * Constructor for vtshape type applier.
-	 * @param applicator {@link DefaultPdbApplicator} for which this class is working.
+	 * Constructor for vtshape type applier
+	 * @param applicator {@link DefaultPdbApplicator} for which this class is working
 	 */
 	public VtShapeTypeApplier(DefaultPdbApplicator applicator) {
 		super(applicator);
@@ -49,16 +49,16 @@ public class VtShapeTypeApplier extends MsTypeApplier {
 	}
 
 	@Override
-	DataType apply(AbstractMsType type, FixupContext fixupContext, boolean breakCycle)
-			throws PdbException, CancelledException {
+	boolean apply(AbstractMsType type) throws PdbException, CancelledException {
+
 		// Note that focused investigation as shown that both the VTShape as well as the pointer
 		// to the particular VTShapes are not specific to one class; they can be shared by
 		// totally unrelated classes; moreover, no duplicates of any VTShape or pointer to a
 		// particular VTShape were found either.  Because of this, for now, the VTShape is going
 		// into an anonymous types category.
 		DataType dataType = createVtShape((VtShapeMsType) type);
-//		return applicator.resolve(dataType);
-		return dataType;
+		applicator.putDataType(type, dataType);
+		return true;
 	}
 
 	// We are creating a structure for the vtshape.
@@ -127,10 +127,11 @@ public class VtShapeTypeApplier extends MsTypeApplier {
 			members.add(member);
 		}
 		// offset has the total size at this point
-		if (!DefaultCompositeMember.applyDataTypeMembers(shape, false, offset, members,
+		if (!DefaultCompositeMember.applyDataTypeMembers(shape, false, false, offset, members,
 			msg -> Msg.warn(this, msg), applicator.getCancelOnlyWrappingMonitor())) {
 			CompositeTypeApplier.clearComponents(shape);
 		}
 		return shape; // not resolved
 	}
+
 }

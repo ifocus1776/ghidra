@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -26,11 +26,12 @@ import com.sun.jna.platform.win32.WinBase.PROCESS_INFORMATION;
 import com.sun.jna.platform.win32.WinDef.*;
 import com.sun.jna.platform.win32.WinNT.HANDLE;
 
-import ghidra.dbg.util.ShellUtils;
 import ghidra.pty.PtyChild;
+import ghidra.pty.ShellUtils;
 import ghidra.pty.local.LocalWindowsNativeProcessPtySession;
 import ghidra.pty.windows.jna.ConsoleApiNative;
 import ghidra.pty.windows.jna.ConsoleApiNative.STARTUPINFOEX;
+import ghidra.pty.windows.jna.JobApiNative;
 
 public class ConPtyChild extends ConPtyEndpoint implements PtyChild {
 
@@ -83,6 +84,11 @@ public class ConPtyChild extends ConPtyEndpoint implements PtyChild {
 		 * TODO: How to control local echo?
 		 */
 
+		HANDLE hJob = JobApiNative.INSTANCE.CreateJobObjectW(null, null);
+		if (hJob == null) {
+			throw new LastErrorException(Kernel32.INSTANCE.GetLastError());
+		}
+
 		STARTUPINFOEX si = prepareStartupInfo();
 		PROCESS_INFORMATION pi = new PROCESS_INFORMATION();
 
@@ -102,13 +108,22 @@ public class ConPtyChild extends ConPtyEndpoint implements PtyChild {
 			throw new LastErrorException(Kernel32.INSTANCE.GetLastError());
 		}
 
+		if (!JobApiNative.INSTANCE.AssignProcessToJobObject(hJob, pi.hProcess).booleanValue()) {
+			throw new LastErrorException(Kernel32.INSTANCE.GetLastError());
+		}
+
 		return new LocalWindowsNativeProcessPtySession(pi.dwProcessId.intValue(),
-			pi.dwThreadId.intValue(),
-			new Handle(pi.hProcess), new Handle(pi.hThread), "ConPTY");
+			pi.dwThreadId.intValue(), new Handle(pi.hProcess), new Handle(pi.hThread), "ConPTY",
+			new Handle(hJob));
 	}
 
 	@Override
 	public String nullSession(Collection<TermMode> mode) throws IOException {
 		throw new UnsupportedOperationException("ConPTY does not have a name");
+	}
+
+	@Override
+	public void setWindowSize(short cols, short rows) {
+		pseudoConsoleHandle.resize(rows, cols);
 	}
 }

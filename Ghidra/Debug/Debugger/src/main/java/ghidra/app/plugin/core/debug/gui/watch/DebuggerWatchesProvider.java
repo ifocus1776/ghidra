@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -56,8 +56,8 @@ import ghidra.base.widgets.table.DataTypeTableCellEditor;
 import ghidra.debug.api.tracemgr.DebuggerCoordinates;
 import ghidra.debug.api.watch.WatchRow;
 import ghidra.docking.settings.*;
-import ghidra.framework.model.DomainObject;
 import ghidra.framework.model.DomainObjectChangeRecord;
+import ghidra.framework.model.DomainObjectEvent;
 import ghidra.framework.options.SaveState;
 import ghidra.framework.plugintool.*;
 import ghidra.framework.plugintool.annotation.AutoServiceConsumed;
@@ -75,12 +75,11 @@ import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.program.util.ProgramLocation;
 import ghidra.program.util.ProgramSelection;
 import ghidra.trace.model.*;
-import ghidra.trace.model.Trace.TraceMemoryBytesChangeType;
-import ghidra.trace.model.Trace.TraceMemoryStateChangeType;
 import ghidra.trace.model.guest.TracePlatform;
 import ghidra.trace.model.program.TraceProgramView;
 import ghidra.trace.model.time.schedule.TraceSchedule;
 import ghidra.trace.util.TraceAddressSpace;
+import ghidra.trace.util.TraceEvents;
 import ghidra.util.HelpLocation;
 import ghidra.util.Msg;
 import ghidra.util.exception.CancelledException;
@@ -109,8 +108,7 @@ public class DebuggerWatchesProvider extends ComponentProviderAdapter
 
 		static ActionBuilder builder(Plugin owner) {
 			String ownerName = owner.getName();
-			return new ActionBuilder(NAME, ownerName)
-					.description(DESCRIPTION)
+			return new ActionBuilder(NAME, ownerName).description(DESCRIPTION)
 					.popupMenuPath(NAME)
 					.helpLocation(new HelpLocation(ownerName, HELP_ANCHOR));
 		}
@@ -247,27 +245,24 @@ public class DebuggerWatchesProvider extends ComponentProviderAdapter
 
 	class ForDepsListener extends TraceDomainObjectListener {
 		public ForDepsListener() {
-			listenForUntyped(DomainObject.DO_OBJECT_RESTORED, this::objectRestored);
-			listenFor(TraceMemoryBytesChangeType.CHANGED, this::bytesChanged);
-			listenFor(TraceMemoryStateChangeType.CHANGED, this::stateChanged);
+			listenForUntyped(DomainObjectEvent.RESTORED, this::objectRestored);
+			listenFor(TraceEvents.BYTES_CHANGED, this::bytesChanged);
+			listenFor(TraceEvents.BYTES_STATE_CHANGED, this::stateChanged);
 		}
 
 		private void objectRestored(DomainObjectChangeRecord rec) {
-			changed.add(current.getView().getMemory());
-			changeDebouncer.contact(null);
+			addChanged(current.getView().getMemory());
 		}
 
 		private void bytesChanged(TraceAddressSpace space, TraceAddressSnapRange range) {
 			if (space.getThread() == current.getThread() || space.getThread() == null) {
-				changed.add(range.getRange());
-				changeDebouncer.contact(null);
+				addChanged(range.getRange());
 			}
 		}
 
 		private void stateChanged(TraceAddressSpace space, TraceAddressSnapRange range) {
 			if (space.getThread() == current.getThread() || space.getThread() == null) {
-				changed.add(range.getRange());
-				changeDebouncer.contact(null);
+				addChanged(range.getRange());
 			}
 		}
 	}
@@ -395,6 +390,28 @@ public class DebuggerWatchesProvider extends ComponentProviderAdapter
 		changeDebouncer.addListener(__ -> doCheckDepsAndReevaluate());
 	}
 
+	private void addChanged(AddressSetView toAdd) {
+		synchronized (changed) {
+			changed.add(toAdd);
+			changeDebouncer.contact(null);
+		}
+	}
+
+	private void addChanged(AddressRange toAdd) {
+		synchronized (changed) {
+			changed.add(toAdd);
+			changeDebouncer.contact(null);
+		}
+	}
+
+	private AddressSetView clearChanged(boolean get) {
+		synchronized (changed) {
+			AddressSetView result = get ? new AddressSet(changed) : null;
+			changed.clear();
+			return result;
+		}
+	}
+
 	@Override
 	public ActionContext getActionContext(MouseEvent event) {
 		if (myActionContext != null) {
@@ -408,6 +425,10 @@ public class DebuggerWatchesProvider extends ComponentProviderAdapter
 		mainPanel.add(new JScrollPane(watchTable));
 		watchFilterPanel = new GhidraTableFilterPanel<>(watchTable, watchTableModel);
 		mainPanel.add(watchFilterPanel, BorderLayout.SOUTH);
+
+		String namePrefix = "Watches";
+		watchTable.setAccessibleNamePrefix(namePrefix);
+		watchFilterPanel.setAccessibleNamePrefix(namePrefix);
 
 		watchTable.getSelectionModel().addListSelectionListener(evt -> {
 			if (evt.getValueIsAdjusting()) {
@@ -459,8 +480,8 @@ public class DebuggerWatchesProvider extends ComponentProviderAdapter
 		int modelCol = watchTable.convertColumnIndexToModel(watchTable.getSelectedColumn());
 		Throwable error = row.getError(); // I don't care the selected column for errors
 		if (error != null) {
-			Msg.showError(this, getComponent(), "Evaluation error",
-				"Could not evaluate watch", error);
+			Msg.showError(this, getComponent(), "Evaluation error", "Could not evaluate watch",
+				error);
 		}
 		else if (modelCol == WatchTableColumns.ADDRESS.ordinal()) {
 			Address address = row.getAddress();
@@ -481,7 +502,8 @@ public class DebuggerWatchesProvider extends ComponentProviderAdapter
 			return;
 		}
 		if (address.isMemoryAddress()) {
-			listingService.goTo(address, true);
+			ProgramLocation loc = new ProgramLocation(current.getView(), address);
+			listingService.goTo(loc, true);
 			return;
 		}
 	}
@@ -509,9 +531,8 @@ public class DebuggerWatchesProvider extends ComponentProviderAdapter
 					selHasMemoryReads(ctx))
 				.onAction(this::activatedSelectReads)
 				.buildAndInstallLocal(this);
-		actionAdd = AddAction.builder(plugin)
-				.onAction(this::activatedAdd)
-				.buildAndInstallLocal(this);
+		actionAdd =
+			AddAction.builder(plugin).onAction(this::activatedAdd).buildAndInstallLocal(this);
 		actionRemove = RemoveAction.builder(plugin)
 				.withContext(DebuggerWatchActionContext.class)
 				.enabledWhen(ctx -> !ctx.getWatchRows().isEmpty())
@@ -609,8 +630,7 @@ public class DebuggerWatchesProvider extends ComponentProviderAdapter
 					return;
 				}
 			}
-			try (Transaction tx =
-				current.getTrace().openTransaction("Apply Watch Data Type")) {
+			try (Transaction tx = current.getTrace().openTransaction("Apply Watch Data Type")) {
 				try {
 					listing.clearCodeUnits(row.getAddress(), row.getRange().getMaxAddress(), false);
 					Data data = listing.createData(address, dataType, size);
@@ -913,6 +933,7 @@ public class DebuggerWatchesProvider extends ComponentProviderAdapter
 	}
 
 	public synchronized void doCheckDepsAndReevaluate() {
+		AddressSetView changed = clearChanged(true);
 		if (asyncWatchExecutor == null) {
 			return;
 		}
@@ -929,10 +950,10 @@ public class DebuggerWatchesProvider extends ComponentProviderAdapter
 				row.reevaluate();
 			}
 		}
-		changed.clear();
 	}
 
 	public void reevaluate() {
+		clearChanged(false);
 		if (asyncWatchExecutor == null) {
 			return;
 		}
@@ -940,7 +961,6 @@ public class DebuggerWatchesProvider extends ComponentProviderAdapter
 		for (DefaultWatchRow row : watchTableModel.getModelData()) {
 			row.reevaluate();
 		}
-		changed.clear();
 	}
 
 	public void writeConfigState(SaveState saveState) {
@@ -982,7 +1002,7 @@ public class DebuggerWatchesProvider extends ComponentProviderAdapter
 
 	public void waitEvaluate(int timeoutMs) {
 		try {
-			CompletableFuture.runAsync(() -> {
+			changeDebouncer.stable().thenRunAsync(() -> {
 			}, workQueue).get(timeoutMs, TimeUnit.MILLISECONDS);
 		}
 		catch (ExecutionException | InterruptedException | TimeoutException e) {

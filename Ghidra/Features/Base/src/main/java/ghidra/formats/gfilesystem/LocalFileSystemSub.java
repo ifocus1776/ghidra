@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -16,9 +16,7 @@
 package ghidra.formats.gfilesystem;
 
 import java.io.*;
-import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.formats.gfilesystem.fileinfo.FileAttributes;
@@ -97,7 +95,7 @@ public class LocalFileSystemSub implements GFileSystem, GFileHashProvider {
 			return List.of();
 		}
 		File localDir = getFileFromGFile(directory);
-		if (Files.isSymbolicLink(localDir.toPath())) {
+		if (FSUtilities.isSymlink(localDir)) {
 			return List.of();
 		}
 
@@ -109,10 +107,11 @@ public class LocalFileSystemSub implements GFileSystem, GFileHashProvider {
 
 		List<GFile> tmp = new ArrayList<>(localFiles.length);
 		FSRL dirFSRL = directory.getFSRL();
-		String relPath = FSUtilities.normalizeNativePath(directory.getPath());
+		String relPath = directory.getPath(); // this is the clean relative path assigned to the dir GFile earlier
 
 		for (File f : localFiles) {
-			if (!(f.isFile() || f.isDirectory())) {
+			boolean isSymlink = FSUtilities.isSymlink(f); // check this manually to allow broken symlinks to appear in listing
+			if (!(isSymlink || f.isFile() || f.isDirectory())) {
 				// skip non-file things
 				continue;
 			}
@@ -133,7 +132,7 @@ public class LocalFileSystemSub implements GFileSystem, GFileHashProvider {
 			return rootFS.getFileAttributes(localFile);
 		}
 		catch (IOException e) {
-			// fail and return null
+			// fail and return empty
 		}
 		return FileAttributes.EMPTY;
 	}
@@ -149,9 +148,19 @@ public class LocalFileSystemSub implements GFileSystem, GFileHashProvider {
 	}
 
 	@Override
+	public GFile getRootDir() {
+		return rootGFile;
+	}
+
+	@Override
 	public GFile lookup(String path) throws IOException {
-		File f = LocalFileSystem.lookupFile(localfsRootDir, path, null);
-		if ( f == null ) {
+		return lookup(path, null);
+	}
+
+	@Override
+	public GFile lookup(String path, Comparator<String> nameComp) throws IOException {
+		File f = LocalFileSystem.lookupFile(localfsRootDir, path, nameComp);
+		if (f == null) {
 			return null;
 		}
 		GFile result = getGFile(f);
@@ -209,5 +218,15 @@ public class LocalFileSystemSub implements GFileSystem, GFileHashProvider {
 	public String getMD5Hash(GFile file, boolean required, TaskMonitor monitor)
 			throws CancelledException, IOException {
 		return rootFS.getMD5Hash(file.getFSRL(), required, monitor);
+	}
+
+	@Override
+	public GFile resolveSymlinks(GFile file) throws IOException {
+		File f = getFileFromGFile(file);
+		File canonicalFile = f.getCanonicalFile();
+		if (f.equals(canonicalFile)) {
+			return file;
+		}
+		return getGFile(canonicalFile);
 	}
 }

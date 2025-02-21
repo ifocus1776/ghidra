@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -16,10 +16,14 @@
 package ghidra.app.plugin.core.debug.gui.thread;
 
 import db.Transaction;
-import ghidra.dbg.target.TargetExecutionStateful.TargetExecutionState;
+import ghidra.app.plugin.core.debug.gui.action.PCLocationTrackingSpec;
+import ghidra.app.plugin.core.debug.gui.action.SPLocationTrackingSpec;
+import ghidra.app.plugin.core.debug.service.modules.DebuggerStaticMappingUtils;
 import ghidra.debug.api.target.Target;
-import ghidra.trace.model.Lifespan;
-import ghidra.trace.model.Trace;
+import ghidra.debug.api.tracemgr.DebuggerCoordinates;
+import ghidra.program.model.address.Address;
+import ghidra.program.model.listing.Function;
+import ghidra.trace.model.*;
 import ghidra.trace.model.thread.TraceThread;
 import ghidra.util.Msg;
 
@@ -48,6 +52,34 @@ public class ThreadRow {
 
 	public String getName() {
 		return thread.getName();
+	}
+
+	private Address computeProgramCounter(DebuggerCoordinates coords) {
+		// TODO: Cheating a bit. Also, can user configure whether by stack or regs?
+		return PCLocationTrackingSpec.INSTANCE.computeTraceAddress(provider.getTool(),
+			coords);
+	}
+
+	public Address getProgramCounter() {
+		DebuggerCoordinates coords = provider.current.thread(thread);
+		return computeProgramCounter(coords);
+	}
+
+	public Function getFunction() {
+		DebuggerCoordinates coords = provider.current.thread(thread);
+		Address pc = computeProgramCounter(coords);
+		return DebuggerStaticMappingUtils.getFunction(pc, coords, provider.getTool());
+	}
+
+	public String getModule() {
+		DebuggerCoordinates coords = provider.current.thread(thread);
+		Address pc = computeProgramCounter(coords);
+		return DebuggerStaticMappingUtils.getModuleName(pc, coords);
+	}
+
+	public Address getStackPointer() {
+		DebuggerCoordinates coords = provider.current.thread(thread);
+		return SPLocationTrackingSpec.INSTANCE.computeTraceAddress(provider.getTool(), coords);
 	}
 
 	public long getCreationSnap() {
@@ -86,7 +118,7 @@ public class ThreadRow {
 		if (target == null) {
 			return ThreadState.ALIVE;
 		}
-		TargetExecutionState state = target.getThreadExecutionState(thread);
+		TraceExecutionState state = target.getThreadExecutionState(thread);
 		if (state == null) {
 			return ThreadState.UNKNOWN;
 		}

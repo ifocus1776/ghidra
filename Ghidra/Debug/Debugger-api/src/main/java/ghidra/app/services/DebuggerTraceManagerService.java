@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -28,7 +28,7 @@ import ghidra.trace.model.Trace;
 import ghidra.trace.model.guest.TracePlatform;
 import ghidra.trace.model.program.TraceProgramView;
 import ghidra.trace.model.target.TraceObject;
-import ghidra.trace.model.target.TraceObjectKeyPath;
+import ghidra.trace.model.target.path.KeyPath;
 import ghidra.trace.model.thread.TraceThread;
 import ghidra.trace.model.time.schedule.TraceSchedule;
 import ghidra.util.TriConsumer;
@@ -52,9 +52,9 @@ public interface DebuggerTraceManagerService {
 		 */
 		USER,
 		/**
-		 * A trace was activated because a recording was started, usually when a target is launched
+		 * A trace was activated because a target was published or withdrawn
 		 */
-		START_RECORDING,
+		TARGET_UPDATED,
 		/**
 		 * The change was driven by the model activation, possibly indirectly by the user
 		 */
@@ -251,6 +251,18 @@ public interface DebuggerTraceManagerService {
 	void closeTrace(Trace trace);
 
 	/**
+	 * Close the given trace without confirmation
+	 * 
+	 * <p>
+	 * Ordinarily, {@link #closeTrace(Trace)} will prompt the user to confirm termination of live
+	 * targets associated with traces to be closed. Such prompts can cause issues during automated
+	 * tests.
+	 * 
+	 * @param trace the trace to close
+	 */
+	void closeTraceNoConfirm(Trace trace);
+
+	/**
 	 * Close all traces
 	 */
 	void closeAllTraces();
@@ -303,7 +315,7 @@ public interface DebuggerTraceManagerService {
 	 * 
 	 * <p>
 	 * If asynchronous notification is needed, use
-	 * {@link #activateAndNotify(DebuggerCoordinates, boolean)}.
+	 * {@link #activateAndNotify(DebuggerCoordinates, ActivationCause)}.
 	 * 
 	 * @param coordinates the desired coordinates
 	 * @param cause the cause of activation
@@ -455,14 +467,14 @@ public interface DebuggerTraceManagerService {
 	 * @param path the path
 	 * @return the best coordinates
 	 */
-	DebuggerCoordinates resolvePath(TraceObjectKeyPath path);
+	DebuggerCoordinates resolvePath(KeyPath path);
 
 	/**
-	 * Activate the given object path
+	 * Activate the given canonical object path
 	 * 
 	 * @param path the desired path
 	 */
-	default void activatePath(TraceObjectKeyPath path) {
+	default void activatePath(KeyPath path) {
 		activate(resolvePath(path));
 	}
 
@@ -483,34 +495,6 @@ public interface DebuggerTraceManagerService {
 	default void activateObject(TraceObject object) {
 		activate(resolveObject(object));
 	}
-
-	/**
-	 * Control whether trace activation is synchronized with debugger activation
-	 * 
-	 * @param enabled true to synchronize, false otherwise
-	 */
-	void setSynchronizeActive(boolean enabled);
-
-	/**
-	 * Check whether trace activation is synchronized with debugger activation
-	 * 
-	 * @return true if synchronized, false otherwise
-	 */
-	boolean isSynchronizeActive();
-
-	/**
-	 * Add a listener for changes to activation synchronization enablement
-	 * 
-	 * @param listener the listener to receive change notifications
-	 */
-	void addSynchronizeActiveChangeListener(BooleanChangeAdapter listener);
-
-	/**
-	 * Remove a listener for changes to activation synchronization enablement
-	 * 
-	 * @param listener the listener receiving change notifications
-	 */
-	void removeSynchronizeActiveChangeListener(BooleanChangeAdapter listener);
 
 	/**
 	 * Control whether traces should be saved by default

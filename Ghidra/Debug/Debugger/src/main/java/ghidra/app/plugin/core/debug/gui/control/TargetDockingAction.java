@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,49 +15,61 @@
  */
 package ghidra.app.plugin.core.debug.gui.control;
 
+import java.util.Comparator;
+
 import docking.ActionContext;
 import docking.action.DockingAction;
 import docking.action.KeyBindingType;
+import ghidra.app.services.DebuggerTraceManagerService;
 import ghidra.debug.api.target.ActionName;
 import ghidra.debug.api.target.Target;
 import ghidra.debug.api.target.Target.ActionEntry;
+import ghidra.framework.plugintool.PluginTool;
 
 class TargetDockingAction extends DockingAction {
-	private final DebuggerControlPlugin plugin;
+	private final PluginTool tool;
 	private final ActionName action;
 	private final String defaultDescription;
 
 	private ActionEntry entry;
 
 	public TargetDockingAction(String name, String owner, KeyBindingType keyBindingType,
-			DebuggerControlPlugin plugin, ActionName action, String defaultDescription) {
+			PluginTool tool, ActionName action, String defaultDescription) {
 		super(name, owner, keyBindingType);
-		this.plugin = plugin;
+		this.tool = tool;
 		this.action = action;
 		this.defaultDescription = defaultDescription;
 	}
 
 	private ActionEntry findEntry(ActionContext context) {
-		Target target = plugin.current.getTarget();
+		DebuggerTraceManagerService traceManager =
+			tool.getService(DebuggerTraceManagerService.class);
+		if (traceManager == null) {
+			return null;
+		}
+		Target target = traceManager.getCurrent().getTarget();
 		if (target == null) {
 			return null;
 		}
-		for (ActionEntry ent : target.collectActions(action, context).values()) {
-			if (ent.requiresPrompt()) {
-				continue;
-			}
-			return ent;
-			// TODO: What if multiple match? Do I care to display the extras?
-		}
-		return null;
+		return target.collectActions(action, context)
+				.values()
+				.stream()
+				.filter(e -> !e.requiresPrompt())
+				.sorted(Comparator.comparing(e -> -e.specificity()))
+				.findFirst()
+				.orElse(null);
+		// TODO: What if multiple match? Do I care to display the extras?
+		// Esp., step process vs step thread
 	}
 
 	protected void updateFromContext(ActionContext context) {
 		entry = findEntry(context);
 		if (entry == null) {
+			getToolBarData().setIcon(action.icon());
 			setDescription(defaultDescription);
 		}
 		else {
+			getToolBarData().setIcon(entry.icon());
 			setDescription(entry.details());
 		}
 	}
@@ -73,6 +85,6 @@ class TargetDockingAction extends DockingAction {
 		if (entry == null) {
 			return;
 		}
-		plugin.runTask(getName(), entry);
+		TargetActionTask.runAction(tool, getName(), entry);
 	}
 }

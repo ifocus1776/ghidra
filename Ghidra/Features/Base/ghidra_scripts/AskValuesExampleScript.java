@@ -4,16 +4,16 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-// Example script for showing how to use the "AskValues" script method for inputing multiple values
+// Example script for showing how to use the "AskValues" script method for inputting multiple values
 // @category Examples
 import ghidra.app.script.GhidraScript;
 import ghidra.features.base.values.GhidraValuesMap;
@@ -75,7 +75,7 @@ public class AskValuesExampleScript extends GhidraScript {
 		// show up in the tool and when you release the consumer, it will be closed.
 		// NOTE: if you call getProgram() more than once, the consumer will be added multiple times
 		// and you must release it multiple times
-		Program program = values.getProgram("Other Program", this, state.getTool());
+		Program program = values.getProgram("Other Program", this, state.getTool(), true);
 
 		println("Name = " + name);
 		println("Count = " + age);

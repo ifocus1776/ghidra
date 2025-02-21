@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -30,15 +30,13 @@ import db.Transaction;
 import generic.Unique;
 import generic.test.category.NightlyCategory;
 import ghidra.app.plugin.core.debug.utils.ManagedDomainObject;
-import ghidra.dbg.testutil.DummyProc;
-import ghidra.dbg.util.PathPattern;
-import ghidra.dbg.util.PathPredicates;
 import ghidra.debug.api.tracermi.RemoteMethod;
 import ghidra.pcode.utils.Utils;
 import ghidra.program.model.address.*;
 import ghidra.program.model.data.Float10DataType;
 import ghidra.program.model.lang.Register;
 import ghidra.program.model.lang.RegisterValue;
+import ghidra.pty.testutil.DummyProc;
 import ghidra.trace.database.ToyDBTraceBuilder;
 import ghidra.trace.model.Lifespan;
 import ghidra.trace.model.Trace;
@@ -50,6 +48,8 @@ import ghidra.trace.model.memory.TraceMemorySpace;
 import ghidra.trace.model.modules.TraceModule;
 import ghidra.trace.model.target.TraceObject;
 import ghidra.trace.model.target.TraceObjectValue;
+import ghidra.trace.model.target.path.PathFilter;
+import ghidra.trace.model.target.path.PathPattern;
 
 @Category(NightlyCategory.class) // this may actually be an @PortSensitive test
 public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
@@ -93,7 +93,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 
 				// Would be nice to control / validate the specifics
 				List<TraceObject> list = tb.trace.getObjectManager()
-						.getValuePaths(Lifespan.at(0), PathPredicates.parse("Available[]"))
+						.getValuePaths(Lifespan.at(0), PathFilter.parse("Available[]"))
 						.map(p -> p.getDestination(null))
 						.toList();
 				assertThat(list.size(), greaterThan(2));
@@ -108,7 +108,6 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 					file bash
 					ghidra trace start
 					%s
-					ghidra trace tx-open "Fake" 'ghidra trace create-obj Breakpoints'
 					starti"""
 					.formatted(INSTRUMENT_STOPPED));
 			RemoteMethod refreshBreakpoints = conn.getMethod("refresh_breakpoints");
@@ -117,7 +116,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 				waitStopped();
 
 				conn.execute("""
-						break main
+						break *main
 						hbreak *main+10
 						watch -l *((char*)(&main+20))
 						rwatch -l *((char(*)[8])(&main+30))
@@ -127,7 +126,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 
 				List<TraceObjectValue> infBreakLocVals = tb.trace.getObjectManager()
 						.getValuePaths(Lifespan.at(0),
-							PathPredicates.parse("Inferiors[1].Breakpoints[]"))
+							PathFilter.parse("Inferiors[1].Breakpoints[]"))
 						.map(p -> p.getLastEntry())
 						.sorted(Comparator.comparing(TraceObjectValue::getEntryKey))
 						.toList();
@@ -139,7 +138,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 				// NB. starti avoid use of temporary main breakpoint
 				assertBreakLoc(infBreakLocVals.get(0), "[1.1]", main, 1,
 					Set.of(TraceBreakpointKind.SW_EXECUTE),
-					"main");
+					"*main");
 				assertBreakLoc(infBreakLocVals.get(1), "[2.1]", main.add(10), 1,
 					Set.of(TraceBreakpointKind.HW_EXECUTE),
 					"*main+10");
@@ -173,7 +172,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 
 				TraceObject locations = Objects.requireNonNull(tb.obj("Inferiors[1].Breakpoints"));
 				conn.execute("""
-						break main
+						break *main
 						hbreak *main+10
 						watch -l *((char*)(&main+20))
 						rwatch -l *((char(*)[8])(&main+30))
@@ -182,7 +181,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 
 				List<TraceObjectValue> infBreakLocVals = tb.trace.getObjectManager()
 						.getValuePaths(Lifespan.at(0),
-							PathPredicates.parse("Inferiors[1].Breakpoints[]"))
+							PathFilter.parse("Inferiors[1].Breakpoints[]"))
 						.map(p -> p.getLastEntry())
 						.sorted(Comparator.comparing(TraceObjectValue::getEntryKey))
 						.toList();
@@ -194,7 +193,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 				// NB. starti avoid use of temporary main breakpoint
 				assertBreakLoc(infBreakLocVals.get(0), "[1.1]", main, 1,
 					Set.of(TraceBreakpointKind.SW_EXECUTE),
-					"main");
+					"*main");
 				assertBreakLoc(infBreakLocVals.get(1), "[2.1]", main.add(10), 1,
 					Set.of(TraceBreakpointKind.HW_EXECUTE),
 					"*main+10");
@@ -227,7 +226,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 
 				// Would be nice to control / validate the specifics
 				List<TraceObject> list = tb.trace.getObjectManager()
-						.getValuePaths(Lifespan.at(0), PathPredicates.parse("Inferiors[]"))
+						.getValuePaths(Lifespan.at(0), PathFilter.parse("Inferiors[]"))
 						.map(p -> p.getDestination(null))
 						.toList();
 				assertEquals(2, list.size());
@@ -305,7 +304,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 				// Would be nice to control / validate the specifics
 				List<TraceObject> list = tb.trace.getObjectManager()
 						.getValuePaths(Lifespan.at(0),
-							PathPredicates.parse("Inferiors[1].Threads[1].Stack[]"))
+							PathFilter.parse("Inferiors[1].Threads[1].Stack[]"))
 						.map(p -> p.getDestination(null))
 						.toList();
 				assertThat(list.size(), greaterThan(2));
@@ -424,7 +423,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 				tb = new ToyDBTraceBuilder((Trace) mdo.get());
 
 				List<TraceObject> list = tb.trace.getObjectManager()
-						.getValuePaths(Lifespan.at(0), PathPredicates.parse("Inferiors[]"))
+						.getValuePaths(Lifespan.at(0), PathFilter.parse("Inferiors[]"))
 						.map(p -> p.getDestination(null))
 						.toList();
 				assertEquals(2, list.size());
@@ -458,7 +457,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 				tb = new ToyDBTraceBuilder((Trace) mdo.get());
 
 				PathPattern pattern =
-					PathPredicates.parse("Inferiors[].Threads[]").getSingletonPattern();
+					PathFilter.parse("Inferiors[].Threads[]").getSingletonPattern();
 				List<TraceObject> list = tb.trace.getObjectManager()
 						.getValuePaths(Lifespan.at(0), pattern)
 						.map(p -> p.getDestination(null))
@@ -468,7 +467,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 				for (TraceObject t : list) {
 					activateThread.invoke(Map.of("thread", t));
 					String out = conn.executeCapture("thread");
-					List<String> indices = pattern.matchKeys(t.getCanonicalPath().getKeyList());
+					List<String> indices = pattern.matchKeys(t.getCanonicalPath(), true);
 					assertThat(out, containsString(
 						"Current thread is %s.%s".formatted(indices.get(0), indices.get(1))));
 				}
@@ -495,7 +494,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 
 				List<TraceObject> list = tb.trace.getObjectManager()
 						.getValuePaths(Lifespan.at(0),
-							PathPredicates.parse("Inferiors[1].Threads[1].Stack[]"))
+							PathFilter.parse("Inferiors[1].Threads[1].Stack[]"))
 						.map(p -> p.getDestination(null))
 						.toList();
 				assertThat(list.size(), greaterThan(2));
@@ -543,10 +542,9 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 				RemoteMethod attachObj = conn.getMethod("attach_obj");
 				try (ManagedDomainObject mdo = openDomainObject("/New Traces/gdb/noname")) {
 					tb = new ToyDBTraceBuilder((Trace) mdo.get());
-					TraceObject inf = Objects.requireNonNull(tb.obj("Inferiors[1]"));
 					TraceObject target =
 						Objects.requireNonNull(tb.obj("Available[%d]".formatted(proc.pid)));
-					attachObj.invoke(Map.of("inferior", inf, "target", target));
+					attachObj.invoke(Map.of("target", target));
 
 					String out = conn.executeCapture("info inferiors");
 					assertThat(out, containsString("process %d".formatted(proc.pid)));
@@ -853,7 +851,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 					%s
 					start"""
 					.formatted(INSTRUMENT_STOPPED));
-			RemoteMethod stepAdvance = conn.getMethod("Advance");
+			RemoteMethod stepAdvance = conn.getMethod("step_advance");
 			try (ManagedDomainObject mdo = openDomainObject("/New Traces/gdb/bash")) {
 				tb = new ToyDBTraceBuilder((Trace) mdo.get());
 				waitStopped();
@@ -881,7 +879,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 					%s
 					start"""
 					.formatted(INSTRUMENT_STOPPED));
-			RemoteMethod stepReturn = conn.getMethod("Return");
+			RemoteMethod stepReturn = conn.getMethod("step_return");
 			try (ManagedDomainObject mdo = openDomainObject("/New Traces/gdb/bash")) {
 				tb = new ToyDBTraceBuilder((Trace) mdo.get());
 				waitStopped();
@@ -937,7 +935,8 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 				tb = new ToyDBTraceBuilder((Trace) mdo.get());
 				waitStopped();
 
-				breakSwExecuteExpression.invoke(Map.of("expression", "main"));
+				// Use *main instead of main, because some gdb will instead do <main+8>
+				breakSwExecuteExpression.invoke(Map.of("expression", "*main"));
 
 				String out = conn.executeCapture("info break");
 				assertThat(out, containsString("<main>"));
@@ -984,7 +983,7 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 				tb = new ToyDBTraceBuilder((Trace) mdo.get());
 				waitStopped();
 
-				breakHwExecuteExpression.invoke(Map.of("expression", "main"));
+				breakHwExecuteExpression.invoke(Map.of("expression", "*main"));
 
 				String out = conn.executeCapture("info break");
 				assertThat(out, containsString("<main>"));
@@ -1157,7 +1156,8 @@ public class GdbMethodsTest extends AbstractGdbTraceRmiTest {
 				tb = new ToyDBTraceBuilder((Trace) mdo.get());
 				waitStopped();
 
-				breakEvent.invoke(Map.of("spec", "load"));
+				TraceObject inf = Objects.requireNonNull(tb.obj("Inferiors[1]"));
+				breakEvent.invoke(Map.of("inferior", inf, "spec", "load"));
 
 				String out = conn.executeCapture("info break");
 				assertThat(out, containsString("load of library"));

@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -42,13 +42,8 @@ import ghidra.app.plugin.core.debug.gui.modules.DebuggerModuleMapProposalDialog.
 import ghidra.app.plugin.core.debug.gui.modules.DebuggerModulesProvider.MapModulesAction;
 import ghidra.app.plugin.core.debug.gui.modules.DebuggerModulesProvider.MapSectionsAction;
 import ghidra.app.plugin.core.debug.gui.modules.DebuggerSectionMapProposalDialog.SectionMapTableColumns;
+import ghidra.app.plugin.core.debug.service.tracemgr.DebuggerTraceManagerServiceTestAccess;
 import ghidra.app.services.DebuggerListingService;
-import ghidra.dbg.target.*;
-import ghidra.dbg.target.schema.SchemaContext;
-import ghidra.dbg.target.schema.TargetObjectSchema.SchemaName;
-import ghidra.dbg.target.schema.XmlSchemaContext;
-import ghidra.dbg.util.PathPattern;
-import ghidra.dbg.util.PathUtils;
 import ghidra.debug.api.modules.ModuleMapProposal.ModuleMapEntry;
 import ghidra.debug.api.modules.SectionMapProposal.SectionMapEntry;
 import ghidra.debug.api.tracemgr.DebuggerCoordinates;
@@ -59,14 +54,57 @@ import ghidra.program.model.mem.MemoryBlock;
 import ghidra.trace.database.module.TraceObjectSection;
 import ghidra.trace.model.Lifespan;
 import ghidra.trace.model.Trace;
+import ghidra.trace.model.memory.TraceObjectMemoryRegion;
 import ghidra.trace.model.modules.TraceObjectModule;
 import ghidra.trace.model.modules.TraceStaticMapping;
-import ghidra.trace.model.target.*;
+import ghidra.trace.model.target.TraceObject;
 import ghidra.trace.model.target.TraceObject.ConflictResolution;
+import ghidra.trace.model.target.TraceObjectManager;
+import ghidra.trace.model.target.path.*;
+import ghidra.trace.model.target.schema.SchemaContext;
+import ghidra.trace.model.target.schema.TraceObjectSchema.SchemaName;
+import ghidra.trace.model.target.schema.XmlSchemaContext;
 import ghidra.util.table.GhidraTable;
 
 @Category(NightlyCategory.class)
 public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTest {
+
+	public static final String CTX_XML = """
+			<context>
+			    <schema name='Session' elementResync='NEVER' attributeResync='ONCE'>
+			        <attribute name='Processes' schema='ProcessContainer' />
+			    </schema>
+			    <schema name='ProcessContainer' canonical='yes' elementResync='NEVER'
+			            attributeResync='ONCE'>
+			        <element index='1' schema='Process' />
+			    </schema>
+			    <schema name='Process' elementResync='NEVER' attributeResync='ONCE'>
+			        <attribute name='Modules' schema='ModuleContainer' />
+			        <attribute name='Memory' schema='RegionContainer' />
+			    </schema>
+			    <schema name='RegionContainer' canonical='yes' elementResync='NEVER'
+			            attributeResync='ONCE'>
+			        <element schema='Region' />
+			    </schema>
+			    <schema name='Region' elementResync='NEVER' attributeResync='NEVER'>
+			        <interface name='MemoryRegion' />
+			    </schema>
+			    <schema name='ModuleContainer' canonical='yes' elementResync='NEVER'
+			            attributeResync='ONCE'>
+			        <element schema='Module' />
+			    </schema>
+			    <schema name='Module' elementResync='NEVER' attributeResync='NEVER'>
+			        <interface name='Module' />
+			        <attribute name='Sections' schema='SectionContainer' />
+			    </schema>
+			    <schema name='SectionContainer' canonical='yes' elementResync='NEVER'
+			            attributeResync='ONCE'>
+			        <element schema='Section' />
+			    </schema>
+			    <schema name='Section' elementResync='NEVER' attributeResync='NEVER'>
+			        <interface name='Section' />
+			    </schema>
+			</context>""";
 
 	DebuggerModulesProvider provider;
 
@@ -93,42 +131,7 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 
 	public void activateObjectsMode() throws Exception {
 		// NOTE the use of index='1' allowing object-based managers to ID unique path
-		ctx = XmlSchemaContext.deserialize("""
-				<context>
-				    <schema name='Session' elementResync='NEVER' attributeResync='ONCE'>
-				        <attribute name='Processes' schema='ProcessContainer' />
-				    </schema>
-				    <schema name='ProcessContainer' canonical='yes' elementResync='NEVER'
-				            attributeResync='ONCE'>
-				        <element index='1' schema='Process' />
-				    </schema>
-				    <schema name='Process' elementResync='NEVER' attributeResync='ONCE'>
-				        <attribute name='Modules' schema='ModuleContainer' />
-				        <attribute name='Memory' schema='RegionContainer' />
-				    </schema>
-				    <schema name='RegionContainer' canonical='yes' elementResync='NEVER'
-				            attributeResync='ONCE'>
-				        <element schema='Region' />
-				    </schema>
-				    <schema name='Region' elementResync='NEVER' attributeResync='NEVER'>
-				        <interface name='MemoryRegion' />
-				    </schema>
-				    <schema name='ModuleContainer' canonical='yes' elementResync='NEVER'
-				            attributeResync='ONCE'>
-				        <element schema='Module' />
-				    </schema>
-				    <schema name='Module' elementResync='NEVER' attributeResync='NEVER'>
-				        <interface name='Module' />
-				        <attribute name='Sections' schema='SectionContainer' />
-				    </schema>
-				    <schema name='SectionContainer' canonical='yes' elementResync='NEVER'
-				            attributeResync='ONCE'>
-				        <element schema='Section' />
-				    </schema>
-				    <schema name='Section' elementResync='NEVER' attributeResync='NEVER'>
-				        <interface name='Section' />
-				    </schema>
-				</context>""");
+		ctx = XmlSchemaContext.deserialize(CTX_XML);
 
 		try (Transaction tx = tb.startTransaction()) {
 			tb.trace.getObjectManager().createRootObject(ctx.getSchema(new SchemaName("Session")));
@@ -136,32 +139,33 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 	}
 
 	protected void addRegionsFromModules() throws Exception {
-		PathPattern regionPattern = new PathPattern(PathUtils.parse("Processes[1].Memory[]"));
+		PathPattern regionPattern = PathFilter.parse("Processes[1].Memory[]");
 		TraceObjectManager om = tb.trace.getObjectManager();
 		try (Transaction tx = tb.startTransaction()) {
 			TraceObject root = om.getRootObject();
 			for (TraceObject module : (Iterable<TraceObject>) () -> root
-					.querySuccessorsTargetInterface(Lifespan.at(0), TargetModule.class, true)
+					.findSuccessorsInterface(Lifespan.at(0), TraceObjectModule.class, true)
 					.map(p -> p.getDestination(root))
 					.iterator()) {
 				String moduleName = module.getCanonicalPath().index();
 				Lifespan span = module.getLife().bound();
 				for (TraceObject section : (Iterable<TraceObject>) () -> module
-						.querySuccessorsTargetInterface(Lifespan.at(0), TargetSection.class, true)
+						.findSuccessorsInterface(Lifespan.at(0), TraceObjectSection.class,
+							true)
 						.map(p -> p.getDestination(root))
 						.iterator()) {
 					String sectionName = section.getCanonicalPath().index();
-					TraceObject region = om.createObject(TraceObjectKeyPath
-							.of(regionPattern.applyKeys(moduleName + ":" + sectionName)
-									.getSingletonPath()))
+					TraceObject region = om
+							.createObject(regionPattern.applyKeys(moduleName + ":" + sectionName)
+									.getSingletonPath())
 							.insert(span, ConflictResolution.TRUNCATE)
 							.getDestination(root);
-					region.setAttribute(span, TargetMemoryRegion.RANGE_ATTRIBUTE_NAME,
-						section.getAttribute(0, TargetSection.RANGE_ATTRIBUTE_NAME).getValue());
-					region.setAttribute(span, TargetMemoryRegion.READABLE_ATTRIBUTE_NAME, true);
-					region.setAttribute(span, TargetMemoryRegion.WRITABLE_ATTRIBUTE_NAME,
+					region.setAttribute(span, TraceObjectMemoryRegion.KEY_RANGE,
+						section.getAttribute(0, TraceObjectSection.KEY_RANGE).getValue());
+					region.setAttribute(span, TraceObjectMemoryRegion.KEY_READABLE, true);
+					region.setAttribute(span, TraceObjectMemoryRegion.KEY_WRITABLE,
 						".data".equals(sectionName));
-					region.setAttribute(span, TargetMemoryRegion.EXECUTABLE_ATTRIBUTE_NAME,
+					region.setAttribute(span, TraceObjectMemoryRegion.KEY_EXECUTABLE,
 						".text".equals(sectionName));
 				}
 			}
@@ -169,15 +173,15 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 	}
 
 	protected TraceObjectModule addModule(String name, AddressRange range, Lifespan span) {
-		PathPattern modulePattern = new PathPattern(PathUtils.parse("Processes[1].Modules[]"));
+		PathPattern modulePattern = PathFilter.parse("Processes[1].Modules[]");
 		TraceObjectManager om = tb.trace.getObjectManager();
 		TraceObjectModule module = Objects.requireNonNull(
-			om.createObject(TraceObjectKeyPath.of(modulePattern.applyKeys(name).getSingletonPath()))
+			om.createObject(modulePattern.applyKeys(name).getSingletonPath())
 					.insert(span, ConflictResolution.TRUNCATE)
 					.getDestination(null)
 					.queryInterface(TraceObjectModule.class));
-		module.getObject().setAttribute(span, TargetModule.MODULE_NAME_ATTRIBUTE_NAME, name);
-		module.getObject().setAttribute(span, TargetModule.RANGE_ATTRIBUTE_NAME, range);
+		module.getObject().setAttribute(span, TraceObjectModule.KEY_MODULE_NAME, name);
+		module.getObject().setAttribute(span, TraceObjectModule.KEY_RANGE, range);
 		return module;
 	}
 
@@ -191,7 +195,7 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 				.insert(span, ConflictResolution.TRUNCATE)
 				.getDestination(null)
 				.queryInterface(TraceObjectSection.class));
-		section.getObject().setAttribute(span, TargetSection.RANGE_ATTRIBUTE_NAME, range);
+		section.getObject().setAttribute(span, TraceObjectSection.KEY_RANGE, range);
 		return section;
 	}
 
@@ -232,14 +236,20 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 	protected void assertModuleRow(int pos, Object object, String name, Address start, Address end,
 			long length) {
 		ValueRow row = provider.modulesPanel.getAllItems().get(pos);
-		DynamicTableColumn<ValueRow, ?, Trace> nameCol =
-			provider.modulesPanel.getColumnByNameAndType("Name", ValueProperty.class).getValue();
-		DynamicTableColumn<ValueRow, ?, Trace> baseCol =
-			provider.modulesPanel.getColumnByNameAndType("Base", ValueProperty.class).getValue();
-		DynamicTableColumn<ValueRow, ?, Trace> maxCol =
-			provider.modulesPanel.getColumnByNameAndType("Max", ValueProperty.class).getValue();
-		DynamicTableColumn<ValueRow, ?, Trace> lengthCol =
-			provider.modulesPanel.getColumnByNameAndType("Length", ValueProperty.class).getValue();
+		var tableModel = QueryPanelTestHelper.getTableModel(provider.modulesPanel);
+		GhidraTable table = QueryPanelTestHelper.getTable(provider.modulesPanel);
+		DynamicTableColumn<ValueRow, ?, Trace> nameCol = QueryPanelTestHelper
+				.getColumnByNameAndType(tableModel, table, "Name", ValueProperty.class)
+				.column();
+		DynamicTableColumn<ValueRow, ?, Trace> baseCol = QueryPanelTestHelper
+				.getColumnByNameAndType(tableModel, table, "Base", ValueProperty.class)
+				.column();
+		DynamicTableColumn<ValueRow, ?, Trace> maxCol = QueryPanelTestHelper
+				.getColumnByNameAndType(tableModel, table, "Max", ValueProperty.class)
+				.column();
+		DynamicTableColumn<ValueRow, ?, Trace> lengthCol = QueryPanelTestHelper
+				.getColumnByNameAndType(tableModel, table, "Length", ValueProperty.class)
+				.column();
 
 		assertSame(object, row.getValue().getValue());
 		assertEquals(name, rowColVal(row, nameCol));
@@ -251,17 +261,23 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 	protected void assertSectionRow(int pos, Object object, String moduleName, String name,
 			Address start, Address end, long length) {
 		ValueRow row = provider.sectionsPanel.getAllItems().get(pos);
-		DynamicTableColumn<ValueRow, ?, Trace> moduleNameCol =
-			provider.sectionsPanel.getColumnByNameAndType("Module Name", ValueProperty.class)
-					.getValue();
-		DynamicTableColumn<ValueRow, ?, Trace> nameCol =
-			provider.sectionsPanel.getColumnByNameAndType("Name", String.class).getValue();
-		DynamicTableColumn<ValueRow, ?, Trace> startCol =
-			provider.sectionsPanel.getColumnByNameAndType("Start", ValueProperty.class).getValue();
-		DynamicTableColumn<ValueRow, ?, Trace> endCol =
-			provider.sectionsPanel.getColumnByNameAndType("End", ValueProperty.class).getValue();
-		DynamicTableColumn<ValueRow, ?, Trace> lengthCol =
-			provider.sectionsPanel.getColumnByNameAndType("Length", ValueProperty.class).getValue();
+		var tableModel = QueryPanelTestHelper.getTableModel(provider.sectionsPanel);
+		GhidraTable table = QueryPanelTestHelper.getTable(provider.sectionsPanel);
+		DynamicTableColumn<ValueRow, ?, Trace> moduleNameCol = QueryPanelTestHelper
+				.getColumnByNameAndType(tableModel, table, "Module Name", ValueProperty.class)
+				.column();
+		DynamicTableColumn<ValueRow, ?, Trace> nameCol = QueryPanelTestHelper
+				.getColumnByNameAndType(tableModel, table, "Name", String.class)
+				.column();
+		DynamicTableColumn<ValueRow, ?, Trace> startCol = QueryPanelTestHelper
+				.getColumnByNameAndType(tableModel, table, "Start", ValueProperty.class)
+				.column();
+		DynamicTableColumn<ValueRow, ?, Trace> endCol = QueryPanelTestHelper
+				.getColumnByNameAndType(tableModel, table, "End", ValueProperty.class)
+				.column();
+		DynamicTableColumn<ValueRow, ?, Trace> lengthCol = QueryPanelTestHelper
+				.getColumnByNameAndType(tableModel, table, "Length", ValueProperty.class)
+				.column();
 
 		assertSame(object, row.getValue().getValue());
 		assertEquals(moduleName, rowColVal(row, moduleNameCol));
@@ -401,7 +417,7 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 		});
 	}
 
-	@Test
+	// @Test // Not gonna with write-behind cache
 	public void testUndoRedoCausesUpdateInProvider() throws Exception {
 		createAndOpenTrace();
 
@@ -422,6 +438,7 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 
 	@Test
 	public void testActivatingNoTraceEmptiesProvider() throws Exception {
+		DebuggerTraceManagerServiceTestAccess.setEnsureActiveTrace(traceManager, false);
 		createAndOpenTrace();
 
 		addModules();
@@ -491,7 +508,7 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 
 	@Test
 	public void testActionMapModules() throws Exception {
-		assertFalse(provider.actionMapModules.isEnabled());
+		assertDisabled(provider, provider.actionMapModules);
 
 		createAndOpenTrace();
 		createAndOpenProgramFromTrace();
@@ -503,7 +520,7 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 		waitForSwing();
 
 		// Still
-		assertFalse(provider.actionMapModules.isEnabled());
+		assertDisabled(provider, provider.actionMapModules);
 
 		try (Transaction tx = program.openTransaction("Change name")) {
 			program.setImageBase(addr(program, 0x00400000), true);
@@ -516,7 +533,7 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 		waitForPass(() -> assertModuleTableSize(2));
 
 		runSwing(() -> provider.setSelectedModules(Set.of(modExe)));
-		assertTrue(provider.actionMapModules.isEnabled());
+		assertEnabled(provider, provider.actionMapModules);
 
 		performEnabledAction(provider, provider.actionMapModules, false);
 
@@ -558,7 +575,7 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 
 	@Test
 	public void testActionMapSections() throws Exception {
-		assertFalse(provider.actionMapSections.isEnabled());
+		assertDisabled(provider, provider.actionMapSections);
 
 		createAndOpenTrace();
 		createAndOpenProgramFromTrace();
@@ -570,7 +587,7 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 		waitForTasks();
 
 		// Still
-		assertFalse(provider.actionMapSections.isEnabled());
+		assertDisabled(provider, provider.actionMapSections);
 
 		MemoryBlock block = addBlock();
 		try (Transaction tx = program.openTransaction("Change name")) {
@@ -581,7 +598,7 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 		waitForPass(() -> assertSectionTableSize(4));
 
 		runSwing(() -> provider.setSelectedSections(Set.of(secExeText)));
-		assertTrue(provider.actionMapSections.isEnabled());
+		assertEnabled(provider, provider.actionMapSections);
 
 		performEnabledAction(provider, provider.actionMapSections, false);
 
@@ -701,7 +718,7 @@ public class DebuggerModulesProviderTest extends AbstractGhidraHeadedDebuggerTes
 		for (ValueRow row : visibleSections()) {
 			assertEquals(modExe.getObject(), row.getValue()
 					.getChild()
-					.queryCanonicalAncestorsTargetInterface(TargetModule.class)
+					.findCanonicalAncestorsInterface(TraceObjectModule.class)
 					.findFirst()
 					.orElse(null));
 		}

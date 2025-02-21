@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -23,12 +23,12 @@ import java.util.stream.Stream;
 import docking.widgets.table.RangeCursorTableHeaderRenderer.SeekListener;
 import docking.widgets.table.threaded.ThreadedTableModel;
 import ghidra.framework.model.DomainObjectChangeRecord;
+import ghidra.framework.model.DomainObjectEvent;
 import ghidra.framework.plugintool.Plugin;
 import ghidra.trace.model.*;
-import ghidra.trace.model.Trace.TraceObjectChangeType;
-import ghidra.trace.model.Trace.TraceSnapshotChangeType;
 import ghidra.trace.model.target.TraceObject;
 import ghidra.trace.model.target.TraceObjectValue;
+import ghidra.trace.util.TraceEvents;
 import ghidra.util.datastruct.Accumulator;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
@@ -38,16 +38,17 @@ public abstract class AbstractQueryTableModel<T> extends ThreadedTableModel<T, T
 
 	protected class ListenerForChanges extends TraceDomainObjectListener {
 		public ListenerForChanges() {
-			listenForUntyped(Trace.DO_OBJECT_RESTORED, this::objectRestored);
-			listenFor(TraceObjectChangeType.VALUE_CREATED, this::valueCreated);
-			listenFor(TraceObjectChangeType.VALUE_DELETED, this::valueDeleted);
-			listenFor(TraceObjectChangeType.VALUE_LIFESPAN_CHANGED, this::valueLifespanChanged);
+			listenForUntyped(DomainObjectEvent.RESTORED, this::objectRestored);
+			listenFor(TraceEvents.VALUE_CREATED, this::valueCreated);
+			listenFor(TraceEvents.VALUE_DELETED, this::valueDeleted);
+			listenFor(TraceEvents.VALUE_LIFESPAN_CHANGED, this::valueLifespanChanged);
 
-			listenFor(TraceSnapshotChangeType.ADDED, this::maxSnapChanged);
-			listenFor(TraceSnapshotChangeType.DELETED, this::maxSnapChanged);
+			listenFor(TraceEvents.SNAPSHOT_ADDED, this::maxSnapChanged);
+			listenFor(TraceEvents.SNAPSHOT_DELETED, this::maxSnapChanged);
 		}
 
 		protected void objectRestored(DomainObjectChangeRecord record) {
+			AbstractQueryTableModel.this.maxSnapChanged();
 			reload();
 		}
 
@@ -301,6 +302,7 @@ public abstract class AbstractQueryTableModel<T> extends ThreadedTableModel<T, T
 	@Override
 	protected void doLoad(Accumulator<T> accumulator, TaskMonitor monitor)
 			throws CancelledException {
+		Trace trace = this.trace;
 		if (trace == null || query == null || trace.getObjectManager().getRootSchema() == null) {
 			return;
 		}

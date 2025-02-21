@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -35,10 +35,11 @@ import ghidra.xml.*;
  */
 public abstract class AssignAction {
 	public static final int SUCCESS = 0;			// Data-type is fully assigned
-	public static final int FAIL = 1;				// Action could not be applied (not enough resources)
-	public static final int HIDDENRET_PTRPARAM = 2;	// Hidden return pointer as first input parameter
-	public static final int HIDDENRET_SPECIALREG = 3;	// Hidden return pointer in special register
-	public static final int HIDDENRET_SPECIALREG_VOID = 4;	// Hidden return pointer, but no normal return
+	public static final int FAIL = 1;				// Action could not be applied
+	public static final int NO_ASSIGNMENT = 2;		// Do not assign a storage location
+	public static final int HIDDENRET_PTRPARAM = 3;	// Hidden return pointer as first input parameter
+	public static final int HIDDENRET_SPECIALREG = 4;	// Hidden return pointer in special register
+	public static final int HIDDENRET_SPECIALREG_VOID = 5;	// Hidden return pointer, but no normal return
 
 	protected ParamListStandard resource;			// Resources to which this action applies
 
@@ -120,11 +121,14 @@ public abstract class AssignAction {
 			action = new ConvertToPointer(res);
 		}
 		else if (nm.equals(ELEM_HIDDEN_RETURN.name())) {
-			action = new HiddenReturnAssign(res, false);
+			action = new HiddenReturnAssign(res, HIDDENRET_SPECIALREG);
 		}
 		else if (nm.equals(ELEM_JOIN_PER_PRIMITIVE.name())) {
 			boolean consumeMostSig = res.getEntry(0).isBigEndian();
 			action = new MultiMemberAssign(StorageClass.GENERAL, false, consumeMostSig, res);
+		}
+		else if (nm.equals(ELEM_JOIN_DUAL_CLASS.name())) {
+			action = new MultiSlotDualAssign(res);
 		}
 		else {
 			throw new XmlParseException("Unknown model rule action: " + nm);
@@ -150,11 +154,13 @@ public abstract class AssignAction {
 		if (nm.equals(ELEM_CONSUME_EXTRA.name())) {
 			action = new ConsumeExtra(res);
 		}
+		else if (nm.equals(ELEM_EXTRA_STACK.name())) {
+			action = new ExtraStack(res, 0);
+		}
 		else {
 			throw new XmlParseException("Unknown model rule sideeffect: " + nm);
 		}
 		action.restoreXml(parser);
 		return action;
 	}
-
 }

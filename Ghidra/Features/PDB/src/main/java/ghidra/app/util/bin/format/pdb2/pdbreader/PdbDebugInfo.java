@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -40,7 +40,7 @@ public abstract class PdbDebugInfo {
 	/**
 	 * These are Section Contribution Versions (SCV) 6.00 and 14.00.  We are building to the MSFT
 	 *  API.  They have chosen to mix in some magic along the way for these--perhaps to ensure that
-	 *  the the value will be a large unsigned 32-bit or a negative 32-bit.  We store the value
+	 *  the value will be a large unsigned 32-bit or a negative 32-bit.  We store the value
 	 *  in a java long, so that we can maintain the signed-ness of the values, if necessary.  MSFT
 	 *  is probably trying to prevent these values from being mimicked by data in the versions
 	 *  prior to v 6.00.
@@ -344,6 +344,7 @@ public abstract class PdbDebugInfo {
 		// DebugInfo and if the above part (test for SVC600 and SVC1400 would
 		// be the override method for PdbNewDebugInfo.
 		else {
+			substreamReader.reset(); // version number was not a real field
 			while (substreamReader.hasMore()) {
 				pdb.checkCancelled();
 				SectionContribution sectionContribution = new SectionContribution400();
@@ -516,7 +517,7 @@ public abstract class PdbDebugInfo {
 	protected void dumpModuleInformation(Writer writer) throws IOException, CancelledException {
 		for (ModuleInformation information : moduleInformationList) {
 			pdb.checkCancelled();
-			writer.write(information.dump());
+			information.dump(writer);
 			writer.write("\n");
 		}
 	}
@@ -531,7 +532,7 @@ public abstract class PdbDebugInfo {
 	protected void dumpSectionContributions(Writer writer) throws IOException, CancelledException {
 		for (SectionContribution contribution : sectionContributionList) {
 			pdb.checkCancelled();
-			writer.write(contribution.dump());
+			contribution.dump(writer);
 			writer.write("\n");
 		}
 	}
@@ -546,7 +547,7 @@ public abstract class PdbDebugInfo {
 	protected void dumpSegmentMap(Writer writer) throws IOException, CancelledException {
 		for (SegmentMapDescription description : segmentMapList) {
 			pdb.checkCancelled();
-			writer.write(description.dump());
+			description.dump(writer);
 			writer.write("\n");
 		}
 	}
@@ -560,6 +561,7 @@ public abstract class PdbDebugInfo {
 		for (ModuleInformation moduleInformation : moduleInformationList) {
 			pdb.checkCancelled();
 			Module module = new Module(pdb, moduleInformation);
+			// Indices: module #1 goes into index 0 and so on.
 			modules.add(module);
 		}
 	}
@@ -574,7 +576,8 @@ public abstract class PdbDebugInfo {
 	 * @return the module
 	 */
 	public Module getModule(int moduleNum) {
-		return modules.get(moduleNum);
+		// Indices: module #1 goes into index 0 and so on.
+		return modules.get(moduleNum - 1);
 	}
 
 	/**
@@ -583,7 +586,7 @@ public abstract class PdbDebugInfo {
 	 * @throws CancelledException upon user cancellation
 	 * @throws PdbException upon not enough data left to parse
 	 */
-	MsSymbolIterator getSymbolIterator() throws CancelledException, PdbException {
+	public MsSymbolIterator getSymbolIterator() throws CancelledException, PdbException {
 		return new MsSymbolIterator(pdb, streamNumberSymbolRecords, 0, MsfStream.MAX_STREAM_LENGTH);
 	}
 
@@ -593,12 +596,11 @@ public abstract class PdbDebugInfo {
 	 * @return an iterator over all symbols of the module
 	 * @throws CancelledException upon user cancellation
 	 * @throws PdbException upon not enough data left to parse
-	 * @throws IOException upon issue reading the stream
 	 */
-	MsSymbolIterator getSymbolIterator(int moduleNum)
-			throws CancelledException, PdbException, IOException {
-		Module module = modules.get(moduleNum);
-		return module.iterator();
+	public MsSymbolIterator getSymbolIterator(int moduleNum)
+			throws CancelledException, PdbException {
+		Module module = getModule(moduleNum);
+		return module.getSymbolIterator();
 	}
 
 	private void dumpSymbols(Writer writer) throws CancelledException, IOException, PdbException {

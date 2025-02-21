@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -30,7 +30,6 @@ import ghidra.app.plugin.core.debug.gui.breakpoint.DebuggerBreakpointsPlugin;
 import ghidra.app.plugin.core.debug.gui.listing.DebuggerListingPlugin;
 import ghidra.app.plugin.core.debug.gui.modules.DebuggerModulesPlugin;
 import ghidra.app.plugin.core.debug.gui.register.DebuggerRegistersPlugin;
-import ghidra.app.plugin.core.debug.gui.target.DebuggerTargetsPlugin;
 import ghidra.app.plugin.core.debug.gui.thread.DebuggerThreadsPlugin;
 import ghidra.app.plugin.core.debug.gui.time.DebuggerTimePlugin;
 import ghidra.app.plugin.core.disassembler.DisassemblerPlugin;
@@ -38,7 +37,7 @@ import ghidra.app.plugin.core.equate.EquatePlugin;
 import ghidra.app.plugin.core.function.FunctionPlugin;
 import ghidra.app.plugin.core.label.LabelMgrPlugin;
 import ghidra.app.plugin.core.symtable.SymbolTablePlugin;
-import ghidra.app.plugin.debug.MemoryUsagePlugin;
+import ghidra.app.plugin.runtimeinfo.RuntimeInfoPlugin;
 import ghidra.framework.plugintool.util.PluginException;
 import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.data.Undefined4DataType;
@@ -85,7 +84,6 @@ public class DebuggerManualTest extends AbstractGhidraHeadedDebuggerTest {
 		addPlugin(tool, DebuggerModulesPlugin.class);
 		addPlugin(tool, DebuggerRegistersPlugin.class);
 		//addPlugin(tool, DebuggerRegsListingPlugin.class);
-		addPlugin(tool, DebuggerTargetsPlugin.class);
 		addPlugin(tool, DebuggerThreadsPlugin.class);
 		addPlugin(tool, DebuggerTimePlugin.class);
 
@@ -109,7 +107,7 @@ public class DebuggerManualTest extends AbstractGhidraHeadedDebuggerTest {
 		addPlugin(tool, LabelMgrPlugin.class);
 		//addPlugin(tool, LocationReferencesPlugin.class);
 		//addPlugin(tool, MarkerManagerPlugin.class);
-		addPlugin(tool, MemoryUsagePlugin.class);
+		addPlugin(tool, RuntimeInfoPlugin.class);
 		//addPlugin(tool, MemSearchPlugin.class);
 		//addPlugin(tool, MnemonicSearchPlugin.class);
 		//addPlugin(tool, NextPrevAddressPlugin.class);

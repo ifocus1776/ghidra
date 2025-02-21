@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,7 +19,7 @@ import java.io.IOException;
 import java.util.function.Predicate;
 
 import ghidra.app.util.bin.BinaryReader;
-import ghidra.app.util.bin.format.dwarf4.next.DWARFDataInstanceHelper;
+import ghidra.app.util.bin.format.dwarf.DWARFDataInstanceHelper;
 import ghidra.app.util.bin.format.golang.structmapping.*;
 import ghidra.program.model.address.*;
 import ghidra.program.model.data.*;
@@ -33,7 +33,7 @@ public class GoString implements StructureMarkup<GoString> {
 
 	/**
 	 * Creates a artificial gostring instance that was not read from a memory location.
-	 * <p>
+	 * 
 	 * @param goBinary {@link GoRttiMapper}
 	 * @param stringData location of char array
 	 * @param len length of char array

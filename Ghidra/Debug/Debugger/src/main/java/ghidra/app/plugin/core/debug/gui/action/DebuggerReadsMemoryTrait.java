@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,6 +17,8 @@ package ghidra.app.plugin.core.debug.gui.action;
 
 import java.lang.invoke.MethodHandles;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 import docking.ActionContext;
 import docking.ComponentProvider;
@@ -28,23 +30,26 @@ import docking.widgets.EventTrigger;
 import ghidra.app.plugin.core.debug.gui.DebuggerResources;
 import ghidra.app.plugin.core.debug.gui.DebuggerResources.AbstractRefreshSelectedMemoryAction;
 import ghidra.app.plugin.core.debug.gui.action.AutoReadMemorySpec.AutoReadMemorySpecConfigFieldCodec;
+import ghidra.app.plugin.core.debug.gui.control.TargetActionTask;
 import ghidra.app.util.viewer.listingpanel.AddressSetDisplayListener;
 import ghidra.debug.api.target.Target;
 import ghidra.debug.api.tracemgr.DebuggerCoordinates;
-import ghidra.framework.cmd.BackgroundCommand;
-import ghidra.framework.model.DomainObject;
+import ghidra.framework.model.DomainObjectChangeRecord;
+import ghidra.framework.model.DomainObjectEvent;
 import ghidra.framework.options.SaveState;
 import ghidra.framework.plugintool.*;
 import ghidra.framework.plugintool.annotation.AutoConfigStateField;
+import ghidra.lifecycle.Internal;
 import ghidra.program.model.address.*;
-import ghidra.trace.model.*;
-import ghidra.trace.model.Trace.TraceMemoryStateChangeType;
-import ghidra.trace.model.Trace.TraceSnapshotChangeType;
+import ghidra.trace.model.TraceAddressSnapRange;
+import ghidra.trace.model.TraceDomainObjectListener;
 import ghidra.trace.model.memory.TraceMemoryState;
 import ghidra.trace.model.program.TraceProgramView;
 import ghidra.trace.model.time.TraceSnapshot;
+import ghidra.trace.util.TraceEvents;
 import ghidra.util.Msg;
 import ghidra.util.exception.CancelledException;
+import ghidra.util.task.Task;
 import ghidra.util.task.TaskMonitor;
 
 public abstract class DebuggerReadsMemoryTrait {
@@ -70,22 +75,21 @@ public abstract class DebuggerReadsMemoryTrait {
 				selection = visible;
 			}
 			final AddressSetView sel = selection;
-			Trace trace = current.getTrace();
 			Target target = current.getTarget();
-			tool.executeBackgroundCommand(new BackgroundCommand(NAME, true, true, false) {
+
+			TargetActionTask.executeTask(tool, new Task(NAME, true, true, false) {
 				@Override
-				public boolean applyTo(DomainObject obj, TaskMonitor monitor) {
+				public void run(TaskMonitor monitor) throws CancelledException {
 					target.invalidateMemoryCaches();
 					try {
-						target.readMemory(sel, monitor);
-						memoryWasRead(sel);
+						target.readMemoryAsync(sel, monitor).get();
 					}
-					catch (CancelledException e) {
-						return false;
+					catch (InterruptedException | ExecutionException e) {
+						throw new RuntimeException("Failed to read memory", e);
 					}
-					return true;
+					memoryWasRead(sel);
 				}
-			}, trace);
+			});
 		}
 
 		@Override
@@ -100,8 +104,14 @@ public abstract class DebuggerReadsMemoryTrait {
 
 	protected class ForReadsTraceListener extends TraceDomainObjectListener {
 		public ForReadsTraceListener() {
-			listenFor(TraceSnapshotChangeType.ADDED, this::snapshotAdded);
-			listenFor(TraceMemoryStateChangeType.CHANGED, this::memStateChanged);
+			listenForUntyped(DomainObjectEvent.RESTORED, this::objectRestored);
+			listenFor(TraceEvents.SNAPSHOT_ADDED, this::snapshotAdded);
+			listenFor(TraceEvents.BYTES_STATE_CHANGED, this::memStateChanged);
+		}
+
+		private void objectRestored(DomainObjectChangeRecord rec) {
+			actionRefreshSelected.updateEnabled(null);
+			doAutoRead();
 		}
 
 		private void snapshotAdded(TraceSnapshot snapshot) {
@@ -156,6 +166,9 @@ public abstract class DebuggerReadsMemoryTrait {
 	protected DebuggerCoordinates current = DebuggerCoordinates.NOWHERE;
 	protected AddressSetView visible;
 
+	protected final Object lock = new Object();
+	protected volatile CompletableFuture<?> lastRead;
+
 	public DebuggerReadsMemoryTrait(PluginTool tool, Plugin plugin, ComponentProvider provider) {
 		this.tool = tool;
 		this.plugin = plugin;
@@ -197,6 +210,9 @@ public abstract class DebuggerReadsMemoryTrait {
 			removeOldTraceListener();
 		}
 		current = coordinates;
+		if (actionRefreshSelected != null) {
+			actionRefreshSelected.updateEnabled(null);
+		}
 		if (doTraceListener) {
 			addNewTraceListener();
 		}
@@ -220,14 +236,20 @@ public abstract class DebuggerReadsMemoryTrait {
 			return;
 		}
 		AddressSet visible = new AddressSet(this.visible);
-		autoSpec.readMemory(tool, current, visible).thenAccept(b -> {
-			if (b) {
-				memoryWasRead(visible);
-			}
-		}).exceptionally(ex -> {
-			Msg.error(this, "Could not auto-read memory: " + ex);
-			return null;
-		});
+
+		synchronized (lock) {
+			lastRead = autoSpec.getEffective(current)
+					.readMemory(tool, current, visible)
+					.thenAccept(b -> {
+						if (b) {
+							memoryWasRead(visible);
+						}
+					})
+					.exceptionally(ex -> {
+						Msg.error(this, "Could not auto-read memory: " + ex);
+						return null;
+					});
+		}
 	}
 
 	public MultiStateDockingAction<AutoReadMemorySpec> installAutoReadAction() {
@@ -276,6 +298,10 @@ public abstract class DebuggerReadsMemoryTrait {
 
 	public void setAutoSpec(AutoReadMemorySpec autoSpec) {
 		// TODO: What if action == null?
+		if (autoSpec == null || autoSpec.getConfigName() == null) {
+			throw new IllegalArgumentException("autoSpec " + autoSpec.getClass() +
+				"not allowed in menu. Cannot be set explicitly.");
+		}
 		actionAutoRead.setCurrentActionStateByUserData(autoSpec);
 	}
 
@@ -284,8 +310,17 @@ public abstract class DebuggerReadsMemoryTrait {
 	}
 
 	/* testing */
+	@Internal
 	public AddressSetView getVisible() {
 		return visible;
+	}
+
+	/* testing */
+	@Internal
+	public CompletableFuture<?> getLastRead() {
+		synchronized (lock) {
+			return lastRead;
+		}
 	}
 
 	protected abstract AddressSetView getSelection();

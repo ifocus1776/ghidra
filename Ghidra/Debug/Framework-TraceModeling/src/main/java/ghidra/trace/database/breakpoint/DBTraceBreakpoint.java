@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -27,11 +27,11 @@ import ghidra.trace.database.map.DBTraceAddressSnapRangePropertyMapTree;
 import ghidra.trace.database.map.DBTraceAddressSnapRangePropertyMapTree.AbstractDBTraceAddressSnapRangePropertyMapData;
 import ghidra.trace.database.thread.DBTraceThreadManager;
 import ghidra.trace.model.Lifespan;
-import ghidra.trace.model.Trace.TraceBreakpointChangeType;
 import ghidra.trace.model.breakpoint.TraceBreakpoint;
 import ghidra.trace.model.breakpoint.TraceBreakpointKind;
 import ghidra.trace.model.thread.TraceThread;
 import ghidra.trace.util.TraceChangeRecord;
+import ghidra.trace.util.TraceEvents;
 import ghidra.util.LockHold;
 import ghidra.util.Msg;
 import ghidra.util.database.DBCachedObjectStore;
@@ -193,8 +193,8 @@ public class DBTraceBreakpoint
 			this.name = name;
 			update(NAME_COLUMN);
 		}
-		space.trace.setChanged(new TraceChangeRecord<>(TraceBreakpointChangeType.CHANGED,
-			space, this));
+		space.trace
+				.setChanged(new TraceChangeRecord<>(TraceEvents.BREAKPOINT_CHANGED, space, this));
 
 	}
 
@@ -261,7 +261,7 @@ public class DBTraceBreakpoint
 			oldLifespan = lifespan;
 			doSetLifespan(newLifespan);
 		}
-		space.trace.setChanged(new TraceChangeRecord<>(TraceBreakpointChangeType.LIFESPAN_CHANGED,
+		space.trace.setChanged(new TraceChangeRecord<>(TraceEvents.BREAKPOINT_LIFESPAN_CHANGED,
 			space, this, oldLifespan, newLifespan));
 	}
 
@@ -269,6 +269,13 @@ public class DBTraceBreakpoint
 	public Lifespan getLifespan() {
 		try (LockHold hold = LockHold.lock(space.lock.readLock())) {
 			return lifespan;
+		}
+	}
+
+	@Override
+	public boolean isAlive(long snap) {
+		try (LockHold hold = LockHold.lock(space.lock.readLock())) {
+			return lifespan.contains(snap);
 		}
 	}
 
@@ -325,16 +332,15 @@ public class DBTraceBreakpoint
 		}
 		if (that == this) {
 			space.trace.setChanged(
-				new TraceChangeRecord<>(TraceBreakpointChangeType.CHANGED, space, this));
+				new TraceChangeRecord<>(TraceEvents.BREAKPOINT_CHANGED, space, this));
 		}
 		else {
 			// Yes, issue ADDED, before LIFESPAN_CHANGED, as noted in docs
+			space.trace
+					.setChanged(new TraceChangeRecord<>(TraceEvents.BREAKPOINT_ADDED, space, that));
 			space.trace.setChanged(
-				new TraceChangeRecord<>(TraceBreakpointChangeType.ADDED, space, that));
-			space.trace.setChanged(
-				new TraceChangeRecord<>(TraceBreakpointChangeType.LIFESPAN_CHANGED,
-					space, this, Objects.requireNonNull(oldLifespan),
-					Objects.requireNonNull(newLifespan)));
+				new TraceChangeRecord<>(TraceEvents.BREAKPOINT_LIFESPAN_CHANGED, space, this,
+					Objects.requireNonNull(oldLifespan), Objects.requireNonNull(newLifespan)));
 		}
 		return that;
 	}
@@ -403,13 +409,13 @@ public class DBTraceBreakpoint
 		try (LockHold hold = LockHold.lock(space.lock.writeLock())) {
 			doSetEnabled(enabled);
 		}
-		space.trace.setChanged(new TraceChangeRecord<>(TraceBreakpointChangeType.CHANGED,
-			space, this));
+		space.trace
+				.setChanged(new TraceChangeRecord<>(TraceEvents.BREAKPOINT_CHANGED, space, this));
 	}
 
 	@Override
 	public boolean isEnabled(long snap) {
-		// NB. Only object mode support per-snap enablement
+		// NB. Only object mode supports per-snap enablement
 		try (LockHold hold = LockHold.lock(space.lock.readLock())) {
 			return enabled;
 		}
@@ -420,8 +426,8 @@ public class DBTraceBreakpoint
 		try (LockHold hold = LockHold.lock(space.lock.writeLock())) {
 			doSetEmuEnabled(enabled);
 		}
-		space.trace.setChanged(new TraceChangeRecord<>(TraceBreakpointChangeType.CHANGED,
-			space, this));
+		space.trace
+				.setChanged(new TraceChangeRecord<>(TraceEvents.BREAKPOINT_CHANGED, space, this));
 	}
 
 	@Override
@@ -437,8 +443,8 @@ public class DBTraceBreakpoint
 		try (LockHold hold = LockHold.lock(space.lock.writeLock())) {
 			doSetKinds(kinds);
 		}
-		space.trace.setChanged(
-			new TraceChangeRecord<>(TraceBreakpointChangeType.CHANGED, space, this));
+		space.trace
+				.setChanged(new TraceChangeRecord<>(TraceEvents.BREAKPOINT_CHANGED, space, this));
 	}
 
 	@Override
@@ -454,8 +460,8 @@ public class DBTraceBreakpoint
 			this.comment = comment;
 			update(COMMENT_COLUMN);
 		}
-		space.trace.setChanged(new TraceChangeRecord<>(TraceBreakpointChangeType.CHANGED,
-			space, this));
+		space.trace
+				.setChanged(new TraceChangeRecord<>(TraceEvents.BREAKPOINT_CHANGED, space, this));
 	}
 
 	@Override
@@ -476,8 +482,8 @@ public class DBTraceBreakpoint
 			}
 			update(SLEIGH_COLUMN);
 		}
-		space.trace.setChanged(new TraceChangeRecord<>(TraceBreakpointChangeType.CHANGED,
-			space, this));
+		space.trace
+				.setChanged(new TraceChangeRecord<>(TraceEvents.BREAKPOINT_CHANGED, space, this));
 	}
 
 	@Override
@@ -491,5 +497,12 @@ public class DBTraceBreakpoint
 	@Override
 	public void delete() {
 		space.deleteBreakpoint(this);
+	}
+
+	@Override
+	public boolean isValid(long snap) {
+		try (LockHold hold = LockHold.lock(space.lock.readLock())) {
+			return lifespan.contains(snap);
+		}
 	}
 }

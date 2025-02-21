@@ -1,17 +1,17 @@
 ## ###
-#  IP: GHIDRA
-# 
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#  
-#       http://www.apache.org/licenses/LICENSE-2.0
-#  
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# IP: GHIDRA
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 ##
 from collections import deque, namedtuple
 from concurrent.futures import Future
@@ -27,10 +27,15 @@ from . import sch
 from . import trace_rmi_pb2 as bufs
 from .util import send_delimited, recv_delimited
 
+
 # This need not be incremented every Ghidra release. When a breaking protocol
 # change is made, this should be updated to match the first Ghidra release that
 # includes the change.
-VERSION = '10.4'
+#
+# Other places to change:
+# * every pyproject.toml file (incl. deps)
+# * TraceRmiHandler.VERSION
+VERSION = '11.3'
 
 
 class RemoteResult(Future):
@@ -61,9 +66,10 @@ class Receiver(Thread):
             result = self.client._handle_invoke_method(request)
             Client._write_value(
                 reply.xreply_invoke_method.return_value, result)
-        except Exception as e:
-            reply.xreply_invoke_method.error = ''.join(
-                traceback.format_exc())
+        except BaseException as e:
+            print("Error caused by front end")
+            traceback.print_exc()
+            reply.xreply_invoke_method.error = repr(e)
         self.client._send(reply)
 
     def _handle_reply(self, reply):
@@ -79,7 +85,7 @@ class Receiver(Thread):
                 result = request.handler(
                     getattr(reply, request.field_name))
                 request.set_result(result)
-            except Exception as e:
+            except BaseException as e:
                 request.set_exception(e)
 
     def _recv(self, field_name, handler):
@@ -92,7 +98,12 @@ class Receiver(Thread):
         dbg_seq = 0
         while not self._is_shutdown:
             #print("Receiving message")
-            reply = recv_delimited(self.client.s, bufs.RootMessage(), dbg_seq)
+            try:
+                reply = recv_delimited(
+                    self.client.s, bufs.RootMessage(), dbg_seq)
+            except BaseException as e:
+                self._is_shutdown = True
+                return
             #print(f"Got one: {reply.WhichOneof('msg')}")
             dbg_seq += 1
             try:
@@ -283,14 +294,19 @@ class Trace(object):
                 self._snap += 1
             return self._snap
 
-    def snapshot(self, description, datetime=None):
+    def snapshot(self, description, datetime=None, snap=None):
         """
         Create a snapshot.
 
         Future state operations implicitly modify this new snapshot.
+        The snap argument is optional.  If ommitted, this creates a snapshot immediately
+        after the last created snapshot.  If given, it creates the given snapshot.
         """
 
-        snap = self._next_snap()
+        if snap is None:
+            snap = self._next_snap()
+        else:
+            self._snap = snap
         self.client._snapshot(self.id, description, datetime, snap)
         return snap
 
@@ -328,6 +344,14 @@ class Trace(object):
         return self.client._delete_bytes(self.id, snap, range)
 
     def put_registers(self, space, values, snap=None):
+        """
+        TODO
+
+        values is a dictionary, where each key is a a register name, and the
+        value is a byte array. No matter the target architecture, the value is
+        given in big-endian byte order.
+        """
+
         if snap is None:
             snap = self.snap()
         return self.client._put_registers(self.id, snap, space, values)
@@ -425,6 +449,9 @@ class ParamDesc:
 class RemoteMethod:
     name: str
     action: str
+    display: str
+    icon: str
+    ok_text: str
     description: str
     parameters: List[RemoteParameter]
     return_schema: sch.Schema
@@ -484,26 +511,29 @@ class MethodRegistry(object):
             cls._to_display(p.annotation), cls._to_description(p.annotation))
 
     @classmethod
-    def create_method(cls, function, name=None, action=None, description=None) -> RemoteMethod:
+    def create_method(cls, function, name=None, action=None, display=None,
+                      icon=None, ok_text=None, description=None) -> RemoteMethod:
         if name is None:
             name = function.__name__
         if action is None:
             action = name
         if description is None:
-            description = function.__doc__ or ''
+            description = function.__doc__
         sig = inspect.signature(function)
         params = []
         for p in sig.parameters.values():
             params.append(cls._make_param(p))
         return_schema = cls._to_schema(sig, sig.return_annotation)
-        return RemoteMethod(name, action, description, params, return_schema, function)
+        return RemoteMethod(name, action, display, icon, ok_text, description,
+                            params, return_schema, function)
 
-    def method(self, func=None, *, name=None, action=None, description='',
-               condition=True):
+    def method(self, func=None, *, name=None, action=None, display=None,
+               icon=None, ok_text=None, description=None, condition=True):
 
         def _method(func):
             if condition:
-                method = self.create_method(func, name, action, description)
+                method = self.create_method(func, name, action, display,
+                                            icon, ok_text, description)
                 self.register_method(method)
             return func
 
@@ -529,8 +559,16 @@ class Batch(object):
     def append(self, fut):
         self.futures.append(fut)
 
+    @staticmethod
+    def _get_result(f, timeout):
+        try:
+            return f.result(timeout)
+        except BaseException as e:
+            print(f"Exception in batch operation: {repr(e)}")
+            return e
+
     def results(self, timeout=None):
-        return [f.result(timeout) for f in self.futures]
+        return [self._get_result(f, timeout) for f in self.futures]
 
 
 class Client(object):
@@ -669,7 +707,10 @@ class Client(object):
     def _write_method(to: bufs.Method, method: RemoteMethod):
         to.name = method.name
         to.action = method.action
-        to.description = method.description
+        to.display = method.display or ''
+        to.icon = method.icon or ''
+        to.ok_text = method.ok_text or ''
+        to.description = method.description or ''
         Client._write_parameters(to.parameters, method.parameters)
         to.return_type.name = method.return_schema.name
 

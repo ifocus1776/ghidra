@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,7 +19,6 @@ import static ghidra.program.model.pcode.AttributeId.*;
 import static ghidra.program.model.pcode.ElementId.*;
 
 import java.io.IOException;
-import java.util.ArrayList;
 
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.pcode.Encoder;
@@ -56,9 +55,20 @@ public class HomogeneousAggregate extends SizeRestrictedFilter {
 		maxPrimitives = maxPrim;
 	}
 
+	/**
+	 * Copy constructor
+	 * @param op2 is the filter to copy
+	 */
+	public HomogeneousAggregate(HomogeneousAggregate op2) {
+		super(op2);
+		name = op2.name;
+		metaType = op2.metaType;
+		maxPrimitives = op2.maxPrimitives;
+	}
+
 	@Override
 	public DatatypeFilter clone() {
-		return new HomogeneousAggregate(name, metaType, maxPrimitives, minSize, maxSize);
+		return new HomogeneousAggregate(this);
 	}
 
 	@Override
@@ -67,17 +77,18 @@ public class HomogeneousAggregate extends SizeRestrictedFilter {
 		if (meta != PcodeDataTypeManager.TYPE_ARRAY && meta != PcodeDataTypeManager.TYPE_STRUCT) {
 			return false;
 		}
-		ArrayList<DataType> res = new ArrayList<>();
-		if (!DatatypeFilter.extractPrimitives(dt, MAX_PRIMITIVES, null, res)) {
+		PrimitiveExtractor primitives = new PrimitiveExtractor(dt, true, 0, MAX_PRIMITIVES);
+		if (!primitives.isValid() || primitives.size() == 0 || primitives.containsUnknown() ||
+			!primitives.isAligned() || primitives.containsHoles()) {
 			return false;
 		}
-		DataType base = res.get(0);
+		DataType base = primitives.get(0).dt;
 		int baseMeta = PcodeDataTypeManager.getMetatype(base);
 		if (baseMeta != metaType) {
 			return false;
 		}
-		for (int i = 1; i < res.size(); ++i) {
-			if (res.get(i) != base) {
+		for (int i = 1; i < primitives.size(); ++i) {
+			if (primitives.get(i).dt != base) {
 				return false;
 			}
 		}

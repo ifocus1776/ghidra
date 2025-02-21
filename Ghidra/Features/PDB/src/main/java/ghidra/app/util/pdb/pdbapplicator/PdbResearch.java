@@ -378,10 +378,12 @@ public class PdbResearch {
 		for (int indexNumber : developerDebugOrderIndexNumbers) {
 			monitor.checkCancelled();
 			PdbResearch.checkBreak(indexNumber);
-			FixupContext fixupContext = new FixupContext();
-			fixupContext.addStagedRecord(indexNumber);
-			applicator.getProcessedDataType(RecordNumber.typeRecordNumber(indexNumber),
-				fixupContext, true);
+			//20240214: neutered internals... containing method not being used at the moment...
+			// consider what needs to be done below
+//			FixupContext fixupContext = new FixupContext();
+//			fixupContext.addStagedRecord(indexNumber);
+//			applicator.getProcessedDataType(RecordNumber.typeRecordNumber(indexNumber),
+//				fixupContext, true);
 		}
 
 	}
@@ -424,32 +426,29 @@ public class PdbResearch {
 		}
 		AbstractMsSymbol symbol = iter.peek(); //temporary during development
 		MsSymbolApplier applier = applicator.getSymbolApplier(iter);
-		if (applier instanceof TypedefSymbolApplier) {
-			TypedefSymbolApplier typedefApplier = (TypedefSymbolApplier) applier;
+		if (applier instanceof TypedefSymbolApplier typedefApplier) {
 			RecordNumber typeNumber = typedefApplier.getTypeRecordNumber();
-			AbstractMsType type = applicator.getPdb().getTypeRecord(typeNumber);
+			AbstractMsType type = applicator.getTypeRecord(typeNumber);
 			System.out
-					.println("UDT " + typedefApplier.getName() + " depends on " + type.toString());
+					.println(
+						"UDT " + typedefApplier.getName() + " depends on " + type.toString());
 //			applier.apply();
 //			procSym(symbolGroup);
 		}
-		else if (applier instanceof ReferenceSymbolApplier) {
-			ReferenceSymbolApplier refSymbolApplier = (ReferenceSymbolApplier) applier;
+		else if (applier instanceof ReferenceSymbolApplier refSymbolApplier) {
 			MsSymbolIterator refIter =
-				refSymbolApplier.getInitializedReferencedSymbolGroupIterator();
+				refSymbolApplier.getRefIterFromSymbol();
 			if (refIter == null) {
 				throw new PdbException("PDB: Referenced Symbol Error - not refIter");
 			}
 			// recursion
 			childWalkSym(applicator, refIter.getStreamNumber(), refIter);
 		}
-		else if (applier instanceof DataSymbolApplier) {
-			DataSymbolApplier dataSymbolApplier = (DataSymbolApplier) applier;
-			MsTypeApplier typeApplier = dataSymbolApplier.getTypeApplier();
+		else if (applier instanceof DataSymbolApplier dataSymbolApplier) {
+			MsTypeApplier typeApplier = dataSymbolApplier.getTypeApplier(symbol);
 			childWalkType(streamNumber, typeApplier);
 		}
-		else if (applier instanceof FunctionSymbolApplier) {
-			FunctionSymbolApplier functionSymbolApplier = (FunctionSymbolApplier) applier;
+		else if (applier instanceof FunctionSymbolApplier functionSymbolApplier) {
 			functionSymbolApplier.getFunction();
 //			AbstractMsTypeApplier typeApplier = functionSymbolApplier.getTypeApplier();
 //			childWalkType(symbolGroup.getModuleNumber(), typeApplier);
@@ -546,7 +545,7 @@ public class PdbResearch {
 			members.add(member);
 			size += extra.getLength();
 		}
-		if (!DefaultCompositeMember.applyDataTypeMembers(composite, false, size, members,
+		if (!DefaultCompositeMember.applyDataTypeMembers(composite, false, false, size, members,
 			msg -> reconstructionWarn(msg), monitor)) {
 			((Structure) composite).deleteAll();
 		}
@@ -799,8 +798,10 @@ public class PdbResearch {
 			return null;
 		}
 		MDMangGhidra demangler = new MDMangGhidra();
+		demangler.setMangledSymbol(mangledString);
+		demangler.setErrorOnRemainingChars(true);
 		try {
-			MDParsableItem parsableItem = demangler.demangle(mangledString, true);
+			MDParsableItem parsableItem = demangler.demangle();
 			if (parsableItem instanceof MDObjectCPP) {
 				MDObjectCPP mdObject = (MDObjectCPP) parsableItem;
 				return mdObject.getQualifiedName().toString();

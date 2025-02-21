@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -121,7 +121,8 @@ public class GhidraURL {
 	 * Confirm local project URL with {@link #isLocalProjectURL(URL)} prior to method use.
 	 * @param localProjectURL local Ghidra project URL
 	 * @return project locator or null if invalid path specified
-	 * @throws IllegalArgumentException URL is not a valid local project URL
+	 * @throws IllegalArgumentException URL is not a valid 
+	 * {@link #isLocalProjectURL(URL) local project URL}.
 	 */
 	public static ProjectLocator getProjectStorageLocator(URL localProjectURL) {
 		if (!isLocalProjectURL(localProjectURL)) {
@@ -330,9 +331,12 @@ public class GhidraURL {
 	}
 
 	/**
-	 * Get normalized URL which corresponds to the local-project or repository
+	 * Get Ghidra URL which corresponds to the local-project or repository with any 
+	 * file path or query details removed.
 	 * @param ghidraUrl ghidra file/folder URL (server-only URL not permitted)
 	 * @return local-project or repository URL
+	 * @throws IllegalArgumentException if URL does not specify the {@code ghidra} protocol
+	 * or does not properly identify a remote repository or local project.
 	 */
 	public static URL getProjectURL(URL ghidraUrl) {
 		if (!PROTOCOL.equals(ghidraUrl.getProtocol())) {
@@ -454,6 +458,48 @@ public class GhidraURL {
 			}
 		}
 		return host;
+	}
+
+	/**
+	 * Force the specified URL to specify a folder.  This may be neccessary when only folders
+	 * are supported since Ghidra permits both a folder and file to have the same name within
+	 * its parent folder.  This method simply ensures that the URL path ends with a {@code /} 
+	 * character if needed.
+	 * @param ghidraUrl ghidra URL
+	 * @return ghidra folder URL
+	 * @throws IllegalArgumentException if specified URL is niether a 
+	 * {@link #isServerRepositoryURL(URL) valid remote server URL}
+	 * or {@link #isLocalProjectURL(URL) local project URL}.
+	 */
+	public static URL getFolderURL(URL ghidraUrl) {
+
+		if (!GhidraURL.isServerRepositoryURL(ghidraUrl) &&
+			!GhidraURL.isLocalProjectURL(ghidraUrl)) {
+			throw new IllegalArgumentException("Invalid Ghidra URL: " + ghidraUrl);
+		}
+
+		URL repoURL = GhidraURL.getProjectURL(ghidraUrl);
+		String path = GhidraURL.getProjectPathname(ghidraUrl);
+
+		path = path.trim();
+		if (!path.endsWith("/")) {
+
+			// force explicit folder path
+			path += "/";
+
+			try {
+				if (GhidraURL.isServerRepositoryURL(ghidraUrl)) {
+					ghidraUrl = new URL(repoURL + path);
+				}
+				else {
+					ghidraUrl = new URL(repoURL + "?" + path);
+				}
+			}
+			catch (MalformedURLException e) {
+				throw new AssertionError(e);
+			}
+		}
+		return ghidraUrl;
 	}
 
 	/**
@@ -634,12 +680,16 @@ public class GhidraURL {
 	 * @param ref optional URL ref or null
 	 * Folder paths should end with a '/' character.
 	 * @return Ghidra Server repository content URL
-	 * @throws IllegalArgumentException if invalid arguments are specified
+	 * @throws IllegalArgumentException if required arguments are blank or invalid
 	 */
 	public static URL makeURL(String host, int port, String repositoryName,
 			String repositoryFolderPath, String fileName, String ref) {
 		if (StringUtils.isBlank(host)) {
 			throw new IllegalArgumentException("host required");
+		}
+		// TODO: Need to improve checks and use of URL encoding
+		if (host.indexOf('@') >= 0) { // prevent user info with hostname
+			throw new IllegalArgumentException("invalid host name");
 		}
 		if (StringUtils.isBlank(repositoryName)) {
 			throw new IllegalArgumentException("repository name required");

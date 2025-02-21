@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -26,6 +26,9 @@ namespace ghidra {
 class ParameterPieces;
 class ParamListStandard;
 class ParamEntry;
+class ParamActive;
+
+extern AttributeId ATTRIB_SIZES;	///< Marshaling attribute "sizes"
 
 extern ElementId ELEM_DATATYPE;		///< Marshaling element \<datatype>
 extern ElementId ELEM_CONSUME;		///< Marshaling element \<consume>
@@ -38,6 +41,45 @@ extern ElementId ELEM_POSITION;		///< Marshaling element \<position>
 extern ElementId ELEM_VARARGS;		///< Marshaling element \<varargs>
 extern ElementId ELEM_HIDDEN_RETURN;	///< Marshaling element \<hidden_return>
 extern ElementId ELEM_JOIN_PER_PRIMITIVE;	///< Marshaling element \<join_per_primitive>
+extern ElementId ELEM_JOIN_DUAL_CLASS;	///< Marshaling element \<join_dual_class>
+extern ElementId ELEM_EXTRA_STACK;	///< Marshaling element \<extra_stack>
+
+/// \brief Class for extracting primitive elements of a data-type
+///
+/// This recursively collects the formal \e primitive data-types of a composite data-type,
+/// laying them out with their offsets in an array.  Other boolean properties are collected.
+class PrimitiveExtractor {
+  enum {
+    unknown_element = 1,		///< Contains at least one TYPE_UNKNOWN primitive
+    unaligned = 2,			///< At least one primitive is not properly aligned
+    extra_space = 4,			///< Data-type contains empty space not attributable to alignment padding
+    invalid = 8,			///< Data-type exceeded maximum or contained illegal elements
+    union_invalid = 16			///< Unions are treated as an illegal element
+  };
+public:
+  /// \brief A primitive data-type and its offset within the containing data-type
+  class Primitive {
+  public:
+    Datatype *dt;		///< Primitive data-type
+    int4 offset;		///< Offset within container
+    Primitive(Datatype *d,int4 off) { dt = d; offset = off; }	///< Constructor
+  };
+private:
+  vector<Primitive> primitives;	///< List of extracted primitives
+  uint4 flags;			///< Boolean properties of the data-type
+  int4 checkOverlap(vector<Primitive> &res,vector<Primitive> &small,int4 point,Primitive &big);
+  bool commonRefinement(vector<Primitive> &first,vector<Primitive> &second);
+  bool handleUnion(TypeUnion *dt,int4 max,int4 offset);		///< Add primitives representing a union data-type
+  bool extract(Datatype *dt,int4 max,int4 offset);	///< Extract list of primitives from given data-type
+public:
+  PrimitiveExtractor(Datatype *dt,bool unionIllegal,int4 offset,int4 max);	///< Constructor
+  int4 size(void) const { return primitives.size(); }	///< Return the number of primitives extracted
+  const Primitive &get(int4 i) const { return primitives[i]; }	///< Get a particular primitive
+  bool isValid(void) const { return (flags & invalid) == 0; }	///< Return \b true if primitives were successfully extracted
+  bool containsUnknown(void) const { return (flags & unknown_element)!=0; }	///< Are there \b unknown elements
+  bool isAligned(void) const { return (flags & unaligned)==0; }		///< Are all elements aligned
+  bool containsHoles(void) const { return (flags & extra_space)!=0; }	///< Is there empty space that is not padding
+};
 
 /// \brief A filter selecting a specific class of data-type
 ///
@@ -63,24 +105,26 @@ public:
   /// \param decoder is the given stream decoder
   virtual void decode(Decoder &decoder)=0;
 
-  static bool extractPrimitives(Datatype *dt,int4 max,Datatype *filler,vector<Datatype *> &res);
   static DatatypeFilter *decodeFilter(Decoder &decoder);	///< Instantiate a filter from the given stream
 };
 
-/// \brief A common base class for data-type filters that tests for a size range
+/// \brief A base class for data-type filters that tests for either a range or an enumerated list of sizes
 ///
-/// Any filter that inherits from \b this, can use ATTRIB_MINSIZE and ATTRIB_MAXSIZE
+/// Any filter that inherits from \b this, can use ATTRIB_MINSIZE, ATTRIB_MAXSIZE, or ATTRIB_SIZES
 /// to place bounds on the possible sizes of data-types.  The bounds are enforced
 /// by calling filterOnSize() within the inheriting classes filter() method.
 class SizeRestrictedFilter : public DatatypeFilter {
 protected:
   int4 minSize;		///< Minimum size of the data-type in bytes
   int4 maxSize;		///< Maximum size of the data-type in bytes
+  set<int4> sizes;	///< An enumerated list of sizes (if not empty)
+  void initFromSizeList(const string &str);	///< Initialize filter from enumerated list of sizes
 public:
   SizeRestrictedFilter(void) { minSize=0; maxSize=0; }	///< Constructor for use with decode()
   SizeRestrictedFilter(int4 min,int4 max);	///< Constructor
+  SizeRestrictedFilter(const SizeRestrictedFilter &op2);	///< Copy constructor
   bool filterOnSize(Datatype *dt) const;		///< Enforce any size bounds on a given data-type
-  virtual DatatypeFilter *clone(void) const { return new SizeRestrictedFilter(minSize,maxSize); }
+  virtual DatatypeFilter *clone(void) const { return new SizeRestrictedFilter(*this); }
   virtual bool filter(Datatype *dt) const { return filterOnSize(dt); }
   virtual void decode(Decoder &decoder);
 };
@@ -94,7 +138,8 @@ protected:
 public:
   MetaTypeFilter(type_metatype meta);	///< Constructor for use with decode()
   MetaTypeFilter(type_metatype meta,int4 min,int4 max);	///< Constructor
-  virtual DatatypeFilter *clone(void) const { return new MetaTypeFilter(metaType,minSize,maxSize); }
+  MetaTypeFilter(const MetaTypeFilter &op2);	///< Copy constructor
+  virtual DatatypeFilter *clone(void) const { return new MetaTypeFilter(*this); }
   virtual bool filter(Datatype *dt) const;
 };
 
@@ -107,7 +152,8 @@ class HomogeneousAggregate : public SizeRestrictedFilter {
 public:
   HomogeneousAggregate(type_metatype meta);	///< Constructor for use with decode()
   HomogeneousAggregate(type_metatype meta,int4 maxPrim,int4 min,int4 max);	///< Constructor
-  virtual DatatypeFilter *clone(void) const { return new HomogeneousAggregate(metaType,maxPrimitives, minSize,maxSize); }
+  HomogeneousAggregate(const HomogeneousAggregate &op2);	///< Copy constructor
+  virtual DatatypeFilter *clone(void) const { return new HomogeneousAggregate(*this); }
   virtual bool filter(Datatype *dt) const;
 };
 
@@ -152,15 +198,24 @@ public:
   virtual void decode(Decoder &decoder) {}
 };
 
-/// \brief A filter that selects function parameters that are considered optional
+/// \brief A filter that selects a range of function parameters that are considered optional.
 ///
 /// If the underlying function prototype is considered to take variable arguments, the first
-/// \e n parameters (as determined by PrototypePieces.firstVarArgSlot) are considered non-optional.
-/// If additional data-types are provided beyond the initial \e n, these are considered optional.
-/// This filter returns \b true for these optional parameters
+/// n parameters (as determined by PrototypePieces.firstVarArgSlot) are considered non-optional.
+///\e  If additional data-types are provided beyond the initial \e n, these are considered optional.
+/// By default this filter matches on any parameter in a prototype with variable arguments.
+/// Optionally, it can filter on a range of parameters that are specified relative to the
+/// first variable argument.
+///   - \<varargs first="0"/>   - matches optional arguments but not non-optional ones.
+///   - \<varargs first="0" last="0"/>  -  matches the first optional argument.
+///   - \<varargs first="-1"/> - matches the last non-optional argument and all optional ones.
 class VarargsFilter : public QualifierFilter {
+  int4 firstPos;			///< Start of range to match (offset relative to first variable arg)
+  int4 lastPos;				///< End of range to match
 public:
-  virtual QualifierFilter *clone(void) const { return new VarargsFilter(); }
+  VarargsFilter(void) { firstPos = 0x80000000; lastPos = 0x7fffffff; }	///< Constructor for use with decode
+  VarargsFilter(int4 first,int4 last) { firstPos = first; lastPos = last; }	///< Constructor
+  virtual QualifierFilter *clone(void) const { return new VarargsFilter(firstPos,lastPos); }
   virtual bool filter(const PrototypePieces &proto,int4 pos) const;
   virtual void decode(Decoder &decoder);
 };
@@ -200,15 +255,20 @@ class AssignAction {
 public:
   enum {
     success,			///< Data-type is fully assigned
-    fail,			///< Action could not be applied (not enough resources)
+    fail,			///< Action could not be applied
+    no_assignment,		///< Do not assign storage for this parameter
     hiddenret_ptrparam,		///< Hidden return pointer as first input parameter
     hiddenret_specialreg,	///< Hidden return pointer in dedicated input register
     hiddenret_specialreg_void	///< Hidden return pointer, but no normal return
   };
 protected:
   const ParamListStandard *resource;	///< Resources to which this action applies
+  bool fillinOutputActive;	///< If \b true, fillinOutputMap is active
 public:
-  AssignAction(const ParamListStandard *res) {resource = res; }	///< Constructor
+  AssignAction(const ParamListStandard *res) {resource = res; fillinOutputActive = false; }	///< Constructor
+
+  bool canAffectFillinOutput(void) const { return fillinOutputActive; }	///< Return \b true if fillinOutputMap is active
+
   virtual ~AssignAction(void) {}
 
   /// \brief Make a copy of \b this action
@@ -236,6 +296,14 @@ public:
   virtual uint4 assignAddress(Datatype *dt,const PrototypePieces &proto,int4 pos,TypeFactory &tlist,
 			      vector<int4> &status,ParameterPieces &res) const=0;
 
+  /// \brief Test if \b this action could produce return value storage matching the given set of trials
+  ///
+  /// If there is a return value data-type that could be assigned storage matching the trials by \b this action,
+  /// return \b true.  The trials have their matching ParamEntry and offset already set and are already sorted.
+  /// \param active is the given set of trials
+  /// \return \b true if the trials could form a valid return value
+  virtual bool fillinOutputMap(ParamActive *active) const;
+
   /// \brief Configure any details of how \b this action should behave from the stream
   ///
   /// \param decoder is the given stream decoder
@@ -250,10 +318,11 @@ class GotoStack : public AssignAction {
   void initializeEntry(void);	///< Find stack entry in resource list
 public:
   GotoStack(const ParamListStandard *res,int4 val);	///< Constructor for use with decode
-  GotoStack(const ParamListStandard *res);	///< Constructor for use with decode()
+  GotoStack(const ParamListStandard *res);	///< Constructor
   virtual AssignAction *clone(const ParamListStandard *newResource) const { return new GotoStack(newResource); }
   virtual uint4 assignAddress(Datatype *dt,const PrototypePieces &proto,int4 pos,TypeFactory &tlist,
 			      vector<int4> &status,ParameterPieces &res) const;
+  virtual bool fillinOutputMap(ParamActive *active) const;
   virtual void decode(Decoder &decoder);
 };
 
@@ -281,8 +350,8 @@ class MultiSlotAssign : public AssignAction {
   bool consumeMostSig;			///< True if resources are consumed starting with most significant bytes
   bool enforceAlignment;		///< True if register resources are discarded to match alignment
   bool justifyRight;			///< True if initial bytes are padding for odd data-type sizes
+  vector<const ParamEntry *> tiles;	///< List of registers that can be joined
   const ParamEntry *stackEntry;		///< The stack resource
-  list<ParamEntry>::const_iterator firstIter;	///< Iterator to first element in the resource list
   void initializeEntries(void);		///< Cache specific ParamEntry needed by the action
 public:
   MultiSlotAssign(const ParamListStandard *res);	///< Constructor for use with decode
@@ -291,6 +360,7 @@ public:
     return new MultiSlotAssign(resourceType,consumeFromStack,consumeMostSig,enforceAlignment,justifyRight,newResource); }
   virtual uint4 assignAddress(Datatype *dt,const PrototypePieces &proto,int4 pos,TypeFactory &tlist,
 			      vector<int4> &status,ParameterPieces &res) const;
+  virtual bool fillinOutputMap(ParamActive *active) const;
   virtual void decode(Decoder &decoder);
 };
 
@@ -309,6 +379,34 @@ public:
     return new MultiMemberAssign(resourceType,consumeFromStack,consumeMostSig,newResource); }
   virtual uint4 assignAddress(Datatype *dt,const PrototypePieces &proto,int4 pos,TypeFactory &tlist,
 			      vector<int4> &status,ParameterPieces &res) const;
+  virtual bool fillinOutputMap(ParamActive *active) const;
+  virtual void decode(Decoder &decoder);
+};
+
+/// \brief Consume multiple registers from different storage classes to pass a data-type
+///
+/// This action is for calling conventions that can use both floating-point and general purpose registers
+/// when assigning storage for a single composite data-type, such as the X86-64 System V ABI
+class MultiSlotDualAssign : public AssignAction {
+  type_class baseType;			///< Resource list from which to consume general tiles
+  type_class altType;			///< Resource list from which to consume alternate tiles
+  bool consumeMostSig;			///< True if resources are consumed starting with most significant bytes
+  bool justifyRight;			///< True if initial bytes are padding for odd data-type sizes
+  int4 tileSize;			///< Number of bytes in a tile
+  vector<const ParamEntry *> baseTiles;	///< General registers to be joined
+  vector<const ParamEntry *> altTiles;	///< Alternate registers to be joined
+  void initializeEntries(void);		///< Cache specific ParamEntry needed by the action
+  int4 getFirstUnused(int4 iter,const vector<const ParamEntry *> &tiles,vector<int4> &status) const;
+  int4 getTileClass(const PrimitiveExtractor &primitives,int4 off,int4 &index) const;
+public:
+  MultiSlotDualAssign(const ParamListStandard *res);		///< Constructor for use with decode
+  MultiSlotDualAssign(type_class baseStore,type_class altStore,bool mostSig,bool justRight,
+		      const ParamListStandard *res);	///< Constructor
+  virtual AssignAction *clone(const ParamListStandard *newResource) const {
+    return new MultiSlotDualAssign(baseType,altType,consumeMostSig,justifyRight,newResource); }
+  virtual uint4 assignAddress(Datatype *dt,const PrototypePieces &proto,int4 pos,TypeFactory &tlist,
+			      vector<int4> &status,ParameterPieces &res) const;
+  virtual bool fillinOutputMap(ParamActive *active) const;
   virtual void decode(Decoder &decoder);
 };
 
@@ -324,22 +422,28 @@ public:
     return new ConsumeAs(resourceType,newResource); }
   virtual uint4 assignAddress(Datatype *dt,const PrototypePieces &proto,int4 pos,TypeFactory &tlist,
 			      vector<int4> &status,ParameterPieces &res) const;
+  virtual bool fillinOutputMap(ParamActive *active) const;
   virtual void decode(Decoder &decoder);
 };
 
-/// \brief Allocate the return value as special input register
+/// \brief Allocate the return value as an input parameter
 ///
-/// The assignAddress() method signals with \b hiddenret_specialreg, indicating that the
-/// input register assignMap() method should use storage class TYPECLASS_HIDDENRET to assign
-/// an additional input register to hold a pointer to the return value.  This is different than
-/// the default \e hiddenret action that assigns a location based TYPECLASS_PTR and generally
-/// consumes a general purpose input register.
+/// A pointer to where the return value is to be stored is passed in as an input parameter.
+/// This action signals this by returning one of
+///   - \b hiddenret_ptrparam         - indicating the pointer is allocated as a normal input parameter
+///   - \b hiddenret_specialreg       - indicating the pointer is passed in a dedicated register
+///   - \b hiddenret_specialreg_void
+///
+/// Usually, if a hidden return input is present, the normal register used for return
+/// will also hold the pointer at the point(s) where the function returns.  A signal of
+/// \b hiddenret_specialreg_void indicates the normal return register is not used to pass back
+/// the pointer.
 class HiddenReturnAssign : public AssignAction {
   uint4 retCode;		///< The specific signal to pass back
 public:
-  HiddenReturnAssign(const ParamListStandard *res,bool voidLock);	///< Constructor
+  HiddenReturnAssign(const ParamListStandard *res,uint4 code);	///< Constructor
   virtual AssignAction *clone(const ParamListStandard *newResource) const {
-    return new HiddenReturnAssign(newResource, retCode == hiddenret_specialreg_void); }
+    return new HiddenReturnAssign(newResource, retCode); }
   virtual uint4 assignAddress(Datatype *dt,const PrototypePieces &proto,int4 pos,TypeFactory &tlist,
 			      vector<int4> &status,ParameterPieces &res) const;
   virtual void decode(Decoder &decoder);
@@ -354,14 +458,33 @@ public:
 /// only a single register is consumed. If all registers are already consumed, no action is taken.
 class ConsumeExtra : public AssignAction {
   type_class resourceType;		///< The other resource list to consume from
-  list<ParamEntry>::const_iterator firstIter;	///< Iterator to first element in the resource list
   bool matchSize;			///< \b false, if side-effect only consumes a single register
+  vector<const ParamEntry *> tiles;	///< List of registers that can be consumed
   void initializeEntries(void);		///< Cache specific ParamEntry needed by the action
 public:
   ConsumeExtra(const ParamListStandard *res);	///< Constructor for use with decode
   ConsumeExtra(type_class store,bool match,const ParamListStandard *res);	///< Constructor
   virtual AssignAction *clone(const ParamListStandard *newResource) const {
     return new ConsumeExtra(resourceType,matchSize,newResource); }
+  virtual uint4 assignAddress(Datatype *dt,const PrototypePieces &proto,int4 pos,TypeFactory &tlist,
+			      vector<int4> &status,ParameterPieces &res) const;
+  virtual void decode(Decoder &decoder);
+};
+
+/// \brief Consume stack resources as a side-effect
+///
+/// This action is a side-effect and doesn't assign an address for the current parameter.
+/// If the current parameter has been assigned a address that is not on the stack, this action consumes
+/// stack resources as if the parameter were allocated to the stack.  If the current parameter was
+/// already assigned a stack address, no additional action is taken.
+class ExtraStack : public AssignAction {
+  const ParamEntry *stackEntry;	///< Parameter Entry corresponding to the stack
+  void initializeEntry(void);	///< Find stack entry in resource list
+public:
+  ExtraStack(const ParamListStandard *res,int4 val);	///< Constructor for use with decode
+  ExtraStack(const ParamListStandard *res);	///< Constructor
+  virtual AssignAction *clone(const ParamListStandard *newResource) const {
+    return new ExtraStack(newResource); }
   virtual uint4 assignAddress(Datatype *dt,const PrototypePieces &proto,int4 pos,TypeFactory &tlist,
 			      vector<int4> &status,ParameterPieces &res) const;
   virtual void decode(Decoder &decoder);
@@ -386,8 +509,26 @@ public:
   ~ModelRule(void);	///< Destructor
   uint4 assignAddress(Datatype *dt,const PrototypePieces &proto,int4 pos,TypeFactory &tlist,
 		      vector<int4> &status,ParameterPieces &res) const;
+  bool fillinOutputMap(ParamActive *active) const;	///< Test and mark the trial(s) that can be valid return value
+  bool canAffectFillinOutput(void) const;		///< Return \b true if fillinOutputMap is active for \b this rule
   void decode(Decoder &decoder,const ParamListStandard *res);		///< Decode \b this rule from stream
 };
+
+/// If the assign action could produce the trials as return value storage, return \b true
+/// \param active is the set of trials
+/// \return \b true if the trials form a return value
+inline bool ModelRule::fillinOutputMap(ParamActive *active) const
+
+{
+  return assign->fillinOutputMap(active);
+}
+
+/// \return \b true if the assign action can affect fillinOutputMap()
+inline bool ModelRule::canAffectFillinOutput(void) const
+
+{
+  return assign->canAffectFillinOutput();
+}
 
 } // End namespace ghidra
 #endif

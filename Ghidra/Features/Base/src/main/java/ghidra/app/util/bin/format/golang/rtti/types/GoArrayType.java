@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,13 +20,12 @@ import java.util.Set;
 
 import ghidra.app.util.bin.format.golang.structmapping.*;
 import ghidra.app.util.viewer.field.AddressAnnotatedStringHandler;
-import ghidra.program.model.data.ArrayDataType;
-import ghidra.program.model.data.DataType;
+import ghidra.program.model.data.*;
 
 /**
  * {@link GoType} structure that defines an array.
  */
-@StructureMapping(structureName = "runtime.arraytype")
+@StructureMapping(structureName = {"runtime.arraytype", "internal/abi.ArrayType"})
 public class GoArrayType extends GoType {
 
 	@FieldMapping
@@ -72,7 +71,32 @@ public class GoArrayType extends GoType {
 		if (self != null) {
 			return self;
 		}
-		return new ArrayDataType(elementDt, (int) len, -1);
+		return isValidLength()
+				? new ArrayDataType(elementDt, (int) len, -1)
+				: new TypedefDataType(elementDt.getCategoryPath(),
+					".invalid_arraysize_%d_%s".formatted(len, elementDt.getName()),
+					new ArrayDataType(elementDt, 1, -1), elementDt.getDataTypeManager());
+	}
+
+	private boolean isValidLength() {
+		return 0 <= len && len <= Integer.MAX_VALUE;
+	}
+	
+	@Override
+	public String getPackagePathString() {
+		String ppStr = super.getPackagePathString();
+		if (ppStr == null || ppStr.isEmpty()) {
+			try {
+				GoType elemType = getElement();
+				if (elemType != null) {
+					ppStr = elemType.getPackagePathString();
+				}
+			}
+			catch (IOException e) {
+				// fall thru
+			}
+		}
+		return ppStr;
 	}
 
 	@Override

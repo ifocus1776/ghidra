@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -27,16 +27,22 @@ import docking.ReusableDialogComponentProvider;
 import docking.widgets.button.GRadioButton;
 import docking.widgets.combobox.GhidraComboBox;
 import docking.widgets.label.GLabel;
+import utility.function.Callback;
 
+/**
+ * A dialog used to perform text searches on a text display.
+ */
 public class FindDialog extends ReusableDialogComponentProvider {
 
-	private GhidraComboBox<String> comboBox;
+	protected GhidraComboBox<String> comboBox;
 
-	private FindDialogSearcher searcher;
+	protected FindDialogSearcher searcher;
 	private JButton nextButton;
 	private JButton previousButton;
 	private JRadioButton stringRadioButton;
 	private JRadioButton regexRadioButton;
+
+	private Callback closedCallback = Callback.dummy();
 
 	public FindDialog(String title, FindDialogSearcher searcher) {
 		super(title, false, true, true, true);
@@ -44,6 +50,16 @@ public class FindDialog extends ReusableDialogComponentProvider {
 
 		addWorkPanel(buildMainPanel());
 		buildButtons();
+	}
+
+	@Override
+	public void dispose() {
+		searcher.dispose();
+		super.dispose();
+	}
+
+	public void setClosedCallback(Callback c) {
+		this.closedCallback = Callback.dummyIfNull(c);
 	}
 
 	private void buildButtons() {
@@ -113,7 +129,7 @@ public class FindDialog extends ReusableDialogComponentProvider {
 		return mainPanel;
 	}
 
-	private void enableButtons(boolean b) {
+	protected void enableButtons(boolean b) {
 		nextButton.setEnabled(b);
 		previousButton.setEnabled(b);
 	}
@@ -130,6 +146,8 @@ public class FindDialog extends ReusableDialogComponentProvider {
 	@Override
 	protected void dialogClosed() {
 		comboBox.setText("");
+		searcher.clearHighlights();
+		closedCallback.call();
 	}
 
 	public void next() {
@@ -138,6 +156,10 @@ public class FindDialog extends ReusableDialogComponentProvider {
 
 	public void previous() {
 		doSearch(false);
+	}
+
+	protected boolean useRegex() {
+		return regexRadioButton.isSelected();
 	}
 
 	private void doSearch(boolean forward) {
@@ -190,7 +212,7 @@ public class FindDialog extends ReusableDialogComponentProvider {
 		notifyUser("Not found");
 	}
 
-	private void notifySearchHit(SearchLocation location) {
+	protected void notifySearchHit(SearchLocation location) {
 		searcher.setCursorPosition(location.getCursorPosition());
 		storeSearchText(location.getSearchText());
 		searcher.highlightSearchResults(location);
@@ -202,12 +224,19 @@ public class FindDialog extends ReusableDialogComponentProvider {
 		// -don't allow searching again while notifying
 		// -make sure the user can see it
 		enableButtons(false);
-		alertMessage(() -> enableButtons(true));
+		alertMessage(() -> {
+			String text = comboBox.getText();
+			enableButtons(text.length() != 0);
+		});
 	}
 
 	@Override
 	protected void dialogShown() {
 		clearStatusText();
+	}
+
+	public FindDialogSearcher getSearcher() {
+		return searcher;
 	}
 
 	String getText() {
@@ -234,7 +263,7 @@ public class FindDialog extends ReusableDialogComponentProvider {
 		history.forEach(comboBox::addToModel);
 	}
 
-	private void storeSearchText(String text) {
+	protected void storeSearchText(String text) {
 
 		MutableComboBoxModel<String> model = (MutableComboBoxModel<String>) comboBox.getModel();
 		model.insertElementAt(text, 0);

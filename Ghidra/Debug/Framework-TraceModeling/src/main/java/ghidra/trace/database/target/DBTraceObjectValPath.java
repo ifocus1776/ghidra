@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -16,10 +16,10 @@
 package ghidra.trace.database.target;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
-import ghidra.dbg.util.PathUtils.PathComparator;
 import ghidra.trace.model.target.*;
+import ghidra.trace.model.target.path.KeyPath;
+import ghidra.trace.model.target.path.KeyPath.PathComparator;
 
 public class DBTraceObjectValPath implements TraceObjectValPath {
 	public static final DBTraceObjectValPath EMPTY = new DBTraceObjectValPath(List.of());
@@ -28,43 +28,41 @@ public class DBTraceObjectValPath implements TraceObjectValPath {
 		return EMPTY;
 	}
 
-	public static DBTraceObjectValPath of(Collection<InternalTraceObjectValue> entryList) {
+	public static DBTraceObjectValPath of(Collection<DBTraceObjectValue> entryList) {
 		return new DBTraceObjectValPath(List.copyOf(entryList));
 	}
 
-	public static DBTraceObjectValPath of(InternalTraceObjectValue... entries) {
+	public static DBTraceObjectValPath of(DBTraceObjectValue... entries) {
 		return DBTraceObjectValPath.of(Arrays.asList(entries));
 	}
 
-	private final List<InternalTraceObjectValue> entryList;
-	private List<String> keyList; // lazily computed
+	private final List<DBTraceObjectValue> entryList;
+	private KeyPath path; // lazily computed
 
-	private DBTraceObjectValPath(List<InternalTraceObjectValue> entryList) {
+	private DBTraceObjectValPath(List<DBTraceObjectValue> entryList) {
 		this.entryList = entryList;
 	}
 
 	@Override
-	public int compareTo(TraceObjectValPath o) {
-		return PathComparator.KEYED.compare(getKeyList(), o.getKeyList());
+	public int compareTo(TraceObjectValPath that) {
+		return PathComparator.KEYED.compare(this.getPath(), that.getPath());
 	}
 
 	@Override
-	public List<? extends InternalTraceObjectValue> getEntryList() {
+	public List<DBTraceObjectValue> getEntryList() {
 		return entryList;
 	}
 
-	protected List<String> computeKeyList() {
-		return entryList.stream()
-				.map(e -> e.getEntryKey())
-				.collect(Collectors.toUnmodifiableList());
+	protected KeyPath computePath() {
+		return KeyPath.of(entryList.stream().map(e -> e.getEntryKey()));
 	}
 
 	@Override
-	public List<String> getKeyList() {
-		if (keyList == null) {
-			keyList = computeKeyList();
+	public KeyPath getPath() {
+		if (path == null) {
+			path = computePath();
 		}
-		return keyList;
+		return path;
 	}
 
 	@Override
@@ -77,10 +75,10 @@ public class DBTraceObjectValPath implements TraceObjectValPath {
 		if (!entryList.isEmpty() && entry.getTrace() != entryList.get(0).getTrace()) {
 			throw new IllegalArgumentException("All values in path must be from the same trace");
 		}
-		if (!(entry instanceof InternalTraceObjectValue val)) {
+		if (!(entry instanceof DBTraceObjectValue val)) {
 			throw new IllegalArgumentException("Value must be in the database");
 		}
-		InternalTraceObjectValue[] arr = new InternalTraceObjectValue[1 + entryList.size()];
+		DBTraceObjectValue[] arr = new DBTraceObjectValue[1 + entryList.size()];
 		arr[0] = val;
 		for (int i = 1; i < arr.length; i++) {
 			arr[i] = entryList.get(i - 1);
@@ -93,10 +91,10 @@ public class DBTraceObjectValPath implements TraceObjectValPath {
 		if (!entryList.isEmpty() && entry.getTrace() != entryList.get(0).getTrace()) {
 			throw new IllegalArgumentException("All values in path must be from the same trace");
 		}
-		if (!(entry instanceof InternalTraceObjectValue val)) {
+		if (!(entry instanceof DBTraceObjectValue val)) {
 			throw new IllegalArgumentException("Value must be in the database");
 		}
-		InternalTraceObjectValue[] arr = new InternalTraceObjectValue[1 + entryList.size()];
+		DBTraceObjectValue[] arr = new DBTraceObjectValue[1 + entryList.size()];
 		for (int i = 0; i < arr.length - 1; i++) {
 			arr[i] = entryList.get(i);
 		}
@@ -105,7 +103,7 @@ public class DBTraceObjectValPath implements TraceObjectValPath {
 	}
 
 	@Override
-	public InternalTraceObjectValue getFirstEntry() {
+	public DBTraceObjectValue getFirstEntry() {
 		if (entryList.isEmpty()) {
 			return null;
 		}
@@ -114,12 +112,12 @@ public class DBTraceObjectValPath implements TraceObjectValPath {
 
 	@Override
 	public TraceObject getSource(TraceObject ifEmpty) {
-		InternalTraceObjectValue first = getFirstEntry();
+		DBTraceObjectValue first = getFirstEntry();
 		return first == null ? ifEmpty : first.getParent();
 	}
 
 	@Override
-	public InternalTraceObjectValue getLastEntry() {
+	public DBTraceObjectValue getLastEntry() {
 		if (entryList.isEmpty()) {
 			return null;
 		}
@@ -128,13 +126,13 @@ public class DBTraceObjectValPath implements TraceObjectValPath {
 
 	@Override
 	public Object getDestinationValue(Object ifEmpty) {
-		InternalTraceObjectValue last = getLastEntry();
+		DBTraceObjectValue last = getLastEntry();
 		return last == null ? ifEmpty : last.getValue();
 	}
 
 	@Override
 	public TraceObject getDestination(TraceObject ifEmpty) {
-		InternalTraceObjectValue last = getLastEntry();
+		DBTraceObjectValue last = getLastEntry();
 		return last == null ? ifEmpty : last.getChild();
 	}
 }

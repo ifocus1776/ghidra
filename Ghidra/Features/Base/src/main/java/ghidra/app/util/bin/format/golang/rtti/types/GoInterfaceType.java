@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -28,14 +28,14 @@ import ghidra.util.exception.CancelledException;
 /**
  * A {@link GoType} structure that defines a golang interface. 
  */
-@StructureMapping(structureName = "runtime.interfacetype")
+@StructureMapping(structureName = {"runtime.interfacetype", "internal/abi.InterfaceType"})
 public class GoInterfaceType extends GoType {
 
 	@FieldMapping
 	@MarkupReference("getPkgPath")
 	private long pkgpath;	// pointer to name 
 
-	@FieldMapping
+	@FieldMapping(fieldName = {"mhdr", "Methods"})
 	private GoSlice mhdr;
 
 	public GoInterfaceType() {
@@ -73,6 +73,7 @@ public class GoInterfaceType extends GoType {
 
 	@Override
 	public void additionalMarkup(MarkupSession session) throws IOException, CancelledException {
+		super.additionalMarkup(session);
 		mhdr.markupArray(null, getStructureNamespace(), GoIMethod.class, false, session);
 		mhdr.markupArrayElements(GoIMethod.class, session);
 	}

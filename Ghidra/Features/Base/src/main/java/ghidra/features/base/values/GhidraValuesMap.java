@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -204,22 +204,28 @@ public class GhidraValuesMap extends GValuesMap {
 	 * while some object is using it, the object itself is typically passed in as
 	 * the consumer. For example, when used in a script, passing in the java keyword "this" as the
 	 * consumer will make the script itself the consumer.
-	 * <P>
+	 * 
 	 * @param name the name of a previously defined program value
 	 * @param consumer the consumer to be used to open the program
 	 * @param tool if non-null, the program will also be opened in the given tool. Note: the
 	 * program will only be added to the tool once even if this method is called multiple times.
-	 * @return the project folder value
-	 * @throws VersionException if the Program being opened is an older version than the 
+	 * @param upgradeIfNeeded if true, program will be upgraded if needed and possible. If false,
+	 * the program will only be upgraded after first prompting the user. In headless mode, it will
+	 * attempt to upgrade only if the parameter is true.
+	 * @return an opened program with the given consumer for the selected domain file or null if
+	 * no program was selected.
+	 * @throws VersionException if the Program is out-of-date from the version of GHIDRA and an 
+	 * upgrade was not been performed. In non-headless mode, the user will have already been
+	 * notified via a popup dialog.
 	 * current Ghidra Program version.
 	 * @throws IOException if there is an error accessing the Program's DomainObject
 	 * @throws CancelledException if the operation is cancelled
 	 * @throws IllegalArgumentException if the name hasn't been defined as a project folder type
 	 */
-	public Program getProgram(String name, Object consumer, Tool tool)
+	public Program getProgram(String name, Object consumer, Tool tool, boolean upgradeIfNeeded)
 			throws VersionException, IOException, CancelledException {
 		ProgramFileValue programFileValue = getValue(name, ProgramFileValue.class, "Program");
-		return programFileValue.openProgram(consumer, tool, monitor);
+		return programFileValue.openProgram(consumer, tool, upgradeIfNeeded, monitor);
 	}
 
 	/**

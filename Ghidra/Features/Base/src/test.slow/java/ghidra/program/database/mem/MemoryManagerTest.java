@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -238,6 +238,12 @@ public class MemoryManagerTest extends AbstractGhidraHeadedIntegrationTest {
 		block1.setComment("Hello");
 		assertEquals("Hello", block1.getComment());
 		assertEquals(block1, mem.getBlock(addr(5)));
+
+		block1.setArtificial(false);
+		assertTrue(!block1.isArtificial());
+
+		block1.setArtificial(true);
+		assertTrue(block1.isArtificial());
 
 		block1.setVolatile(false);
 		assertTrue(!block1.isVolatile());
@@ -473,82 +479,11 @@ public class MemoryManagerTest extends AbstractGhidraHeadedIntegrationTest {
 		assertNotNull(newBlock);
 		assertEquals(block.getName() + ".copy", newBlock.getName());
 		assertEquals(addr(500), newBlock.getStart());
+		assertEquals(block.isArtificial(), newBlock.isArtificial());
 		assertEquals(block.isVolatile(), newBlock.isVolatile());
 		assertEquals(block.isExecute(), newBlock.isExecute());
 		assertEquals(block.isRead(), newBlock.isRead());
 		assertEquals(block.isWrite(), newBlock.isWrite());
-	}
-
-	@Test
-	public void testLiveMemory() throws Exception {
-
-		mem.createInitializedBlock("Test", addr(0), 0x1000, (byte) 0x55, null, false);
-
-		LiveMemoryHandler testHandler = new LiveMemoryHandler() {
-			@Override
-			public void clearCache() {
-			}
-
-			@Override
-			public byte getByte(Address addr) throws MemoryAccessException {
-				return 0;
-			}
-
-			@Override
-			public int getBytes(Address addr, byte[] dest, int dIndex, int size)
-					throws MemoryAccessException {
-				for (int i = 0; i < size; ++i) {
-					dest[dIndex + i] = (byte) i;
-				}
-				return size;
-			}
-
-			@Override
-			public void putByte(Address addr, byte value) {
-			}
-
-			@Override
-			public int putBytes(Address address, byte[] source, int sIndex, int size)
-					throws MemoryAccessException {
-				return 0;
-			}
-
-			@Override
-			public void addLiveMemoryListener(LiveMemoryListener listener) {
-				// TODO Auto-generated method stub
-
-			}
-
-			@Override
-			public void removeLiveMemoryListener(LiveMemoryListener listener) {
-				// TODO Auto-generated method stub
-
-			}
-		};
-
-		assertEquals((byte) 0x55, mem.getByte(addr(0x500)));
-
-		mem.setLiveMemoryHandler(testHandler);
-
-		byte[] bytes = new byte[5];
-		mem.getBytes(addr(0x1000), bytes);
-
-		for (int i = 0; i < bytes.length; ++i) {
-			assertEquals(i, bytes[i]);
-		}
-
-		assertEquals((byte) 0, mem.getByte(addr(0x500)));
-
-		mem.setLiveMemoryHandler(null);
-
-		try {
-			mem.getBytes(addr(0x1000), bytes);
-			Assert.fail();
-		}
-		catch (MemoryAccessException e) {
-		}
-
-		assertEquals((byte) 0x55, mem.getByte(addr(0x500)));
 	}
 
 	@Test
@@ -667,7 +602,7 @@ public class MemoryManagerTest extends AbstractGhidraHeadedIntegrationTest {
 		data = program.getListing().getDataAt(addr(1001));
 		assertEquals("byte", data.getDataType().getName());
 
-		UninitializedBlockCmd cmd = new UninitializedBlockCmd(program, block);
+		UninitializedBlockCmd cmd = new UninitializedBlockCmd(block);
 		cmd.applyTo(program);
 
 		assertNotNull(block);

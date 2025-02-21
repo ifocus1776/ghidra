@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -24,12 +24,15 @@ import java.util.*;
 
 import ghidra.app.util.bin.*;
 import ghidra.app.util.bin.format.elf.info.ElfInfoItem;
+import ghidra.app.util.bin.format.golang.rtti.GoRttiMapper;
+import ghidra.app.util.opinion.*;
 import ghidra.framework.options.Options;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.*;
 import ghidra.program.model.data.DataUtilities.ClearDataMode;
 import ghidra.program.model.lang.Endian;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.util.*;
 
@@ -39,7 +42,9 @@ import ghidra.util.*;
  */
 public class GoBuildInfo implements ElfInfoItem {
 
-	public static final String SECTION_NAME = ".go.buildinfo";
+	public static final String SECTION_NAME = "go.buildinfo";
+	public static final String ELF_SECTION_NAME = ".go.buildinfo";
+	public static final String MACHO_SECTION_NAME = "go_buildinfo";
 
 	// Defined in golang src/debug/buildinfo/buildinfo.go
 	// NOTE: ISO_8859_1 charset is required to not mangle the \u00ff when converting to bytes
@@ -54,6 +59,17 @@ public class GoBuildInfo implements ElfInfoItem {
 
 	private static final int FLAG_ENDIAN = (1 << 0);
 	private static final int FLAG_INLINE_STRING = (1 << 1);
+
+	// map from ghidra arch string to golang arch name
+	private static final Map<String, String> GHIDRA_GOARCH_MAP = Map.of(
+		"aarch64_64", "arm64",
+		"arm_32", "arm",
+		"mips_64", "mips64",
+		"mips_32", "mips",
+		"x86_64", "amd64",
+		"x86_32", "386");
+
+	private static final Set<String> GOLANG_DUALENDIAN_ARCH = Set.of("mips", "mips64", "ppc64");
 
 	/**
 	 * Reads a GoBuildInfo ".go.buildinfo" section from the specified Program, if present.
@@ -73,15 +89,30 @@ public class GoBuildInfo implements ElfInfoItem {
 	 * @return new {@link GoBuildInfo} instance, if present, null if missing or error
 	 */
 	public static ItemWithAddress<GoBuildInfo> findBuildInfo(Program program) {
-		// try as if binary is ELF
-		ItemWithAddress<GoBuildInfo> wrappedItem =
-			ElfInfoItem.readItemFromSection(program, SECTION_NAME, GoBuildInfo::read);
+		ItemWithAddress<GoBuildInfo> wrappedItem = readItemFromSection(program,
+			GoRttiMapper.getFirstGoSection(program, SECTION_NAME, MACHO_SECTION_NAME));
 		if (wrappedItem == null) {
-			// if not present, try common PE location for buildinfo, using "ElfInfoItem" logic
-			// even though this might be a PE binary, cause it doesn't matter
-			wrappedItem = ElfInfoItem.readItemFromSection(program, ".data", GoBuildInfo::read);
+			// if not present, try common PE location for buildinfo
+			wrappedItem = readItemFromSection(program, GoRttiMapper.getGoSection(program, "data"));
 		}
 		return wrappedItem;
+	}
+
+	private static ItemWithAddress<GoBuildInfo> readItemFromSection(Program program,
+			MemoryBlock memBlock) {
+		if (memBlock != null) {
+			try (ByteProvider bp =
+				MemoryByteProvider.createMemoryBlockByteProvider(program.getMemory(), memBlock)) {
+				BinaryReader br = new BinaryReader(bp, !program.getMemory().isBigEndian());
+
+				GoBuildInfo item = read(br, program);
+				return new ItemWithAddress<>(item, memBlock.getStart());
+			}
+			catch (IOException e) {
+				// fall thru, return null
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -170,7 +201,7 @@ public class GoBuildInfo implements ElfInfoItem {
 		return version;
 	}
 
-	public GoVer getVerEnum() {
+	public GoVer getGoVer() {
 		return GoVer.parse(version);
 	}
 
@@ -188,6 +219,85 @@ public class GoBuildInfo implements ElfInfoItem {
 
 	public List<GoBuildSettings> getBuildSettings() {
 		return buildSettings;
+	}
+
+	public GoBuildSettings getBuildSetting(String key) {
+		return buildSettings
+				.stream()
+				.filter(buildSetting -> buildSetting.key().equals(key))
+				.findFirst()
+				.orElse(null);
+	}
+
+	/**
+	 * Returns the Golang OS string for the specified program, either from previously parsed
+	 * metadata value, or from a static Ghidra-loader to golang mapping.
+	 *  
+	 * @param program {@link Program}
+	 * @return golang GOOS string, see https://go.dev/doc/install/source#environment
+	 */
+	public String getGOOS(Program program) {
+		GoBuildSettings goos = getBuildSetting("GOOS");
+		return goos != null ? goos.value() : getProgramGOOS(program);
+	}
+
+	/**
+	 * Returns a Golang "GOOS" string created by a mapping from the Ghidra program's loader type.
+	 * 
+	 * @param program {@link Program}
+	 * @return Golang "GOOS" string
+	 */
+	public static String getProgramGOOS(Program program) {
+		// TODO: this mapping needs more logic
+		String loaderName = program.getExecutableFormat();
+		if (ElfLoader.ELF_NAME.equals(loaderName)) {
+			// TODO: this will require additional work to map all Golang OSs to Ghidra loader info
+			return "linux";
+		}
+		else if (PeLoader.PE_NAME.equals(loaderName)) {
+			return "windows";
+		}
+		else if (MachoLoader.MACH_O_NAME.equals(loaderName)) {
+			return "darwin";
+		}
+		return "unknown";
+	}
+
+	/**
+	 * Returns the Golang Arch string for the specified program, either from previously parsed
+	 * metadata value, or from a static Ghidra language to golang mapping.
+	 * 
+	 * @param program {@link Program}
+	 * @return golang GOARCH string, see https://go.dev/doc/install/source#environment
+	 */
+	public String getGOARCH(Program program) {
+		GoBuildSettings goos = getBuildSetting("GOARCH");
+		return goos != null ? goos.value() : getProgramGOARCH(program);
+	}
+
+	/**
+	 * Returns a Golang "GOARCH" string created by a mapping from the Ghidra program's language (arch).
+	 * 
+	 * @param program {@link Program}
+	 * @return Golang "GOARCH" string
+	 */
+	public static String getProgramGOARCH(Program program) {
+		String langArch =
+			"%s_%d".formatted(
+				getLanguageArch(program.getLanguageID().getIdAsString()).toLowerCase(),
+				program.getDefaultPointerSize() * 8);
+
+		String goarch = GHIDRA_GOARCH_MAP.getOrDefault(langArch, "unknown");
+		if (GOLANG_DUALENDIAN_ARCH.contains(goarch) && !program.getMemory().isBigEndian()) {
+			// golang seems to mark the LE variant and assumes BE as the default if not marked
+			goarch += "le";
+		}
+		return goarch;
+	}
+
+	private static String getLanguageArch(String langId) {
+		int firstColon = langId.indexOf(':');
+		return firstColon > 0 ? langId.substring(0, firstColon) : langId;
 	}
 
 	@Override

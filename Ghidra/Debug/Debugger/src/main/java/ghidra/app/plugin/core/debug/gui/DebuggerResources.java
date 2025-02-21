@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -41,17 +41,14 @@ import ghidra.app.plugin.core.debug.gui.memory.DebuggerRegionsPlugin;
 import ghidra.app.plugin.core.debug.gui.model.DebuggerModelPlugin;
 import ghidra.app.plugin.core.debug.gui.modules.DebuggerModulesPlugin;
 import ghidra.app.plugin.core.debug.gui.modules.DebuggerStaticMappingPlugin;
-import ghidra.app.plugin.core.debug.gui.objects.DebuggerObjectsPlugin;
 import ghidra.app.plugin.core.debug.gui.pcode.DebuggerPcodeStepperPlugin;
 import ghidra.app.plugin.core.debug.gui.register.DebuggerRegistersPlugin;
 import ghidra.app.plugin.core.debug.gui.stack.DebuggerStackPlugin;
-import ghidra.app.plugin.core.debug.gui.target.DebuggerTargetsPlugin;
 import ghidra.app.plugin.core.debug.gui.thread.DebuggerThreadsPlugin;
 import ghidra.app.plugin.core.debug.gui.time.DebuggerTimePlugin;
 import ghidra.app.plugin.core.debug.gui.watch.DebuggerWatchesPlugin;
 import ghidra.app.services.DebuggerTraceManagerService.BooleanChangeAdapter;
 import ghidra.async.AsyncUtils;
-import ghidra.debug.api.model.DebuggerProgramLaunchOffer;
 import ghidra.framework.plugintool.Plugin;
 import ghidra.framework.plugintool.util.PluginUtils;
 import ghidra.program.database.ProgramContentHandler;
@@ -62,6 +59,7 @@ import ghidra.util.exception.CancelledException;
 import resources.MultiIcon;
 
 public interface DebuggerResources {
+
 	String OPTIONS_CATEGORY_DEBUGGER = "Debugger";
 	String OPTIONS_CATEGORY_WORKFLOW = "Workflow";
 
@@ -118,7 +116,7 @@ public interface DebuggerResources {
 	Icon ICON_STACK = new GIcon("icon.debugger.provider.stack");
 	Icon ICON_BREAKPOINTS = new GIcon("icon.debugger.provider.breakpoints");
 	Icon ICON_MODULES = new GIcon("icon.debugger.provider.modules");
-	Icon ICON_MAPPINGS = ICON_PROGRAM; // TODO: A better icon 
+	Icon ICON_MAPPINGS = new GIcon("icon.debugger.provider.mappings"); // TODO: A better icon
 	Icon ICON_PCODE = new GIcon("icon.debugger.provider.pcode"); // TODO
 	Icon ICON_REGIONS = new GIcon("icon.debugger.provider.regions");
 	Icon ICON_TIME = new GIcon("icon.debugger.provider.time");
@@ -131,7 +129,7 @@ public interface DebuggerResources {
 	Icon ICON_DELETE = new GIcon("icon.debugger.delete");
 	Icon ICON_CLEAR = new GIcon("icon.debugger.clear");
 	Icon ICON_REFRESH = new GIcon("icon.debugger.refresh");
-	Icon ICON_FILTER = new GIcon("icon.debugger.filter"); // Eww.
+	Icon ICON_FILTER = new GIcon("icon.debugger.filter");
 	Icon ICON_SELECT_ROWS = new GIcon("icon.debugger.select.rows");
 	Icon ICON_AUTOREAD = new GIcon("icon.debugger.autoread");
 
@@ -148,6 +146,8 @@ public interface DebuggerResources {
 	Icon ICON_MAP_MODULES = new GIcon("icon.debugger.map.modules");
 	Icon ICON_MAP_SECTIONS = new GIcon("icon.debugger.map.sections"); // TODO
 	Icon ICON_MAP_REGIONS = new GIcon("icon.debugger.map.regions"); // TODO
+	Icon ICON_MAP_AUTO = new GIcon("icon.debugger.map.auto");
+	Icon ICON_MAP_MANUALLY = new GIcon("icon.debugger.map.manual");
 	Icon ICON_BLOCK = new GIcon("icon.debugger.block"); // TODO
 	// TODO: Draw an icon
 	Icon ICON_SELECT_ADDRESSES = new GIcon("icon.debugger.select.addresses");
@@ -225,11 +225,6 @@ public interface DebuggerResources {
 	HelpLocation HELP_PROVIDER_REGISTERS = new HelpLocation(
 		PluginUtils.getPluginNameFromClass(DebuggerRegistersPlugin.class), HELP_ANCHOR_PLUGIN);
 
-	String TITLE_PROVIDER_TARGETS = "Debugger Targets";
-	Icon ICON_PROVIDER_TARGETS = ICON_CONNECTION; // TODO: Same icon as action
-	HelpLocation HELP_PROVIDER_TARGETS = new HelpLocation(
-		PluginUtils.getPluginNameFromClass(DebuggerTargetsPlugin.class), HELP_ANCHOR_PLUGIN);
-
 	String TITLE_PROVIDER_STACK = "Stack";
 	Icon ICON_PROVIDER_STACK = ICON_STACK;
 	HelpLocation HELP_PROVIDER_STACK = new HelpLocation(
@@ -245,11 +240,6 @@ public interface DebuggerResources {
 	HelpLocation HELP_PROVIDER_TIME = new HelpLocation(
 		PluginUtils.getPluginNameFromClass(DebuggerTimePlugin.class), HELP_ANCHOR_PLUGIN);
 
-	String TITLE_PROVIDER_OBJECTS = "Objects";
-	Icon ICON_PROVIDER_OBJECTS = new GIcon("icon.debugger.provider.objects");
-	HelpLocation HELP_PROVIDER_OBJECTS = new HelpLocation(
-		PluginUtils.getPluginNameFromClass(DebuggerObjectsPlugin.class), HELP_ANCHOR_PLUGIN);
-
 	String TITLE_PROVIDER_MODEL = "Model"; // TODO: An icon
 	Icon ICON_PROVIDER_MODEL = new GIcon("icon.debugger.provider.model");
 	HelpLocation HELP_PROVIDER_MODEL = new HelpLocation(
@@ -259,8 +249,6 @@ public interface DebuggerResources {
 	Icon ICON_PROVIDER_WATCHES = ICON_AUTOREAD; // TODO: Another icon?
 	HelpLocation HELP_PROVIDER_WATCHES = new HelpLocation(
 		PluginUtils.getPluginNameFromClass(DebuggerWatchesPlugin.class), HELP_ANCHOR_PLUGIN);
-
-	String TITLE_PROVIDER_INTERPRETER = "Interpreter";
 
 	String BOOKMARK_CATEGORY_MEMORY_READ_ERROR = "Debugger Memory Read Error";
 
@@ -426,24 +414,6 @@ public interface DebuggerResources {
 		Icon ICON = ICON_DEBUGGER;
 		String GROUP = GROUP_GENERAL;
 		String HELP_ANCHOR = "debug_program";
-
-		static <T> MultiStateActionBuilder<T> buttonBuilder(Plugin owner, Plugin helpOwner) {
-			return new MultiStateActionBuilder<T>(NAME, owner.getName())
-					.toolBarIcon(ICON)
-					.toolBarGroup(GROUP)
-					.helpLocation(new HelpLocation(helpOwner.getName(), HELP_ANCHOR));
-		}
-
-		static ActionBuilder menuBuilder(DebuggerProgramLaunchOffer offer, Plugin owner,
-				Plugin helpOwner) {
-			return new ActionBuilder(offer.getConfigName(), owner.getName())
-					.description(offer.getButtonTitle())
-					.menuPath(DebuggerPluginPackage.NAME, offer.getMenuParentTitle(),
-						offer.getMenuTitle())
-					.menuIcon(offer.getIcon())
-					.menuGroup(GROUP)
-					.helpLocation(new HelpLocation(helpOwner.getName(), HELP_ANCHOR));
-		}
 	}
 
 	abstract class AbstractQuickLaunchAction extends DockingAction {
@@ -813,40 +783,6 @@ public interface DebuggerResources {
 		}
 	}
 
-	interface ImportMissingModuleAction {
-		String NAME = "Import Missing Module";
-		String DESCRIPTION = "Import the missing module from disk";
-		Icon ICON = ICON_IMPORT;
-		String HELP_ANCHOR = "import_missing_module";
-
-		static ActionBuilder builder(Plugin owner) {
-			String ownerName = owner.getName();
-			return new ActionBuilder(NAME, ownerName)
-					.description(DESCRIPTION)
-					.toolBarIcon(ICON)
-					.popupMenuIcon(ICON)
-					.popupMenuPath(NAME)
-					.helpLocation(new HelpLocation(ownerName, HELP_ANCHOR));
-		}
-	}
-
-	interface MapMissingModuleAction {
-		String NAME = "Map Missing Module";
-		String DESCRIPTION = "Map the missing module to an existing import";
-		Icon ICON = ICON_MAP_MODULES;
-		String HELP_ANCHOR = "map_missing_module";
-
-		static ActionBuilder builder(Plugin owner) {
-			String ownerName = owner.getName();
-			return new ActionBuilder(NAME, ownerName)
-					.description(DESCRIPTION)
-					.toolBarIcon(ICON)
-					.popupMenuIcon(ICON)
-					.popupMenuPath(NAME)
-					.helpLocation(new HelpLocation(ownerName, HELP_ANCHOR));
-		}
-	}
-
 	interface FollowsCurrentThreadAction {
 		String NAME = "Follows Selected Thread";
 		String DESCRIPTION = "Register tracking follows selected thread (and contents" +
@@ -869,13 +805,11 @@ public interface DebuggerResources {
 
 		String NAME_VIS_RO_ONCE = "Read Visible Memory, RO Once";
 		String NAME_VISIBLE = "Read Visible Memory";
-		String NAME_LOAD_EMU = "Load Emulator from Programs";
 		String NAME_NONE = "Do Not Read Memory";
 
 		// TODO: Separate icon for each
 		Icon ICON_VIS_RO_ONCE = ICON_AUTOREAD;
 		Icon ICON_VISIBLE = ICON_AUTOREAD;
-		Icon ICON_LOAD_EMU = ICON_EMULATE;
 		Icon ICON_NONE = ICON_DELETE;
 
 		static <T> MultiStateActionBuilder<T> builder(Plugin owner) {
@@ -1547,21 +1481,6 @@ public interface DebuggerResources {
 		}
 	}
 
-	interface SynchronizeTargetAction {
-		String NAME = "Synchronize Target Activation";
-		String DESCRIPTION = "Synchronize trace activation with debugger focus/select";
-		Icon ICON = ICON_SYNC;
-		String HELP_ANCHOR = "sync_target";
-
-		static ToggleActionBuilder builder(Plugin owner) {
-			String ownerName = owner.getName();
-			return new ToggleActionBuilder(NAME, ownerName).description(DESCRIPTION)
-					.menuPath(NAME)
-					.menuIcon(ICON)
-					.helpLocation(new HelpLocation(ownerName, HELP_ANCHOR));
-		}
-	}
-
 	interface SaveByDefaultAction {
 		String NAME = "Save Traces By Default";
 		String DESCRIPTION = "Automatically save traces to the project";
@@ -1647,7 +1566,7 @@ public interface DebuggerResources {
 	}
 
 	interface CloseAllTracesAction extends CloseTraceAction {
-		String NAME = NAME_PREFIX + " All Traces";
+		String NAME = NAME_PREFIX + "All Traces";
 		String DESCRIPTION = "Close all traces";
 		String HELP_ANCHOR = "close_all_traces";
 
@@ -1674,7 +1593,7 @@ public interface DebuggerResources {
 	}
 
 	interface CloseOtherTracesAction extends CloseTraceAction {
-		String NAME = NAME_PREFIX + " Other Traces";
+		String NAME = NAME_PREFIX + "Other Traces";
 		String DESCRIPTION = "Close all traces except the current one";
 		String HELP_ANCHOR = "close_other_traces";
 
@@ -1701,7 +1620,7 @@ public interface DebuggerResources {
 	}
 
 	interface CloseDeadTracesAction extends CloseTraceAction {
-		String NAME = NAME_PREFIX + " Dead Traces";
+		String NAME = NAME_PREFIX + "Dead Traces";
 		String DESCRIPTION = "Close all traces not being recorded";
 		String HELP_ANCHOR = "close_dead_traces";
 
@@ -1860,87 +1779,6 @@ public interface DebuggerResources {
 					.description(DESCRIPTION)
 					.toolBarGroup(GROUP)
 					.toolBarIcon(ICON)
-					.helpLocation(new HelpLocation(ownerName, HELP_ANCHOR));
-		}
-	}
-
-	interface LimitToCurrentSnapAction {
-		String NAME = "Limit to Current Snap";
-		String DESCRIPTION = "Choose whether displayed objects must be alive at the current snap";
-		String GROUP = GROUP_GENERAL;
-		Icon ICON = ICON_TIME; // TODO
-		String HELP_ANCHOR = "limit_to_current_snap";
-
-		static ToggleActionBuilder builder(Plugin owner) {
-			String ownerName = owner.getName();
-			return new ToggleActionBuilder(NAME, ownerName)
-					.description(DESCRIPTION)
-					.toolBarGroup(GROUP)
-					.toolBarIcon(ICON)
-					.helpLocation(new HelpLocation(ownerName, HELP_ANCHOR));
-		}
-	}
-
-	interface ShowHiddenAction {
-		String NAME = "Show Hidden";
-		String DESCRIPTION = "Choose whether to display hidden children";
-		String GROUP = GROUP_GENERAL;
-		String HELP_ANCHOR = "show_hidden";
-
-		static ToggleActionBuilder builder(Plugin owner) {
-			String ownerName = owner.getName();
-			return new ToggleActionBuilder(NAME, ownerName)
-					.description(DESCRIPTION)
-					.menuPath(NAME)
-					.menuGroup(GROUP)
-					.helpLocation(new HelpLocation(ownerName, HELP_ANCHOR));
-		}
-	}
-
-	interface ShowPrimitivesInTreeAction {
-		String NAME = "Show Primitives in Tree";
-		String DESCRIPTION = "Choose whether to display primitive values in the tree";
-		String GROUP = GROUP_GENERAL;
-		String HELP_ANCHOR = "show_primitives";
-
-		static ToggleActionBuilder builder(Plugin owner) {
-			String ownerName = owner.getName();
-			return new ToggleActionBuilder(NAME, ownerName)
-					.description(DESCRIPTION)
-					.menuPath(NAME)
-					.menuGroup(GROUP)
-					.helpLocation(new HelpLocation(ownerName, HELP_ANCHOR));
-		}
-	}
-
-	interface ShowMethodsInTreeAction {
-		String NAME = "Show Methods in Tree";
-		String DESCRIPTION = "Choose whether to display methods in the tree";
-		String GROUP = GROUP_GENERAL;
-		String HELP_ANCHOR = "show_methods";
-
-		static ToggleActionBuilder builder(Plugin owner) {
-			String ownerName = owner.getName();
-			return new ToggleActionBuilder(NAME, ownerName)
-					.description(DESCRIPTION)
-					.menuPath(NAME)
-					.menuGroup(GROUP)
-					.helpLocation(new HelpLocation(ownerName, HELP_ANCHOR));
-		}
-	}
-
-	interface FollowLinkAction {
-		String NAME = "Follow Link";
-		String DESCRIPTION = "Navigate to the link target";
-		String GROUP = GROUP_GENERAL;
-		String HELP_ANCHOR = "follow_link";
-
-		static ActionBuilder builder(Plugin owner) {
-			String ownerName = owner.getName();
-			return new ActionBuilder(NAME, ownerName)
-					.description(DESCRIPTION)
-					.popupMenuPath(NAME)
-					.popupMenuGroup(GROUP)
 					.helpLocation(new HelpLocation(ownerName, HELP_ANCHOR));
 		}
 	}

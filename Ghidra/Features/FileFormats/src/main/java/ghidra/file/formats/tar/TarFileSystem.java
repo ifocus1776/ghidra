@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -34,7 +34,6 @@ import ghidra.util.task.TaskMonitor;
  * <p>
  * The factory supports detecting both compressed (gz) and uncompressed tar files,
  * and keys both on the tar filename extension as well as the data in the file.
- * <p>
  */
 @FileSystemInfo(type = "tar", description = "TAR", priority = FileSystemInfo.PRIORITY_HIGH, factory = TarFileSystemFactory.class)
 public class TarFileSystem extends AbstractFileSystem<TarMetadata> {
@@ -68,10 +67,15 @@ public class TarFileSystem extends AbstractFileSystem<TarMetadata> {
 				monitor.checkCancelled();
 
 				int fileNum = fileCount++;
-				GFile newFile = fsIndex.storeFile(tarEntry.getName(), fileCount,
-					tarEntry.isDirectory(), tarEntry.getSize(), new TarMetadata(tarEntry, fileNum));
+				String linkName = tarEntry.getLinkName();
+				GFile newFile = !tarEntry.isSymbolicLink()
+						? fsIndex.storeFile(tarEntry.getName(), fileCount, tarEntry.isDirectory(),
+							tarEntry.getSize(), new TarMetadata(tarEntry, fileNum))
+						: fsIndex.storeSymlink(tarEntry.getName(), fileCount,
+							linkName, linkName.length(), new TarMetadata(tarEntry, fileNum));
 
-				if (tarEntry.getSize() < FileCache.MAX_INMEM_FILESIZE) {
+				if (!tarEntry.isSymbolicLink() &&
+					tarEntry.getSize() < FileCache.MAX_INMEM_FILESIZE) {
 					// because tar files are sequential access, we cache smaller files if they
 					// will fit in a in-memory ByteProvider
 					try (ByteProvider bp =
@@ -104,7 +108,7 @@ public class TarFileSystem extends AbstractFileSystem<TarMetadata> {
 	public FileAttributes getFileAttributes(GFile file, TaskMonitor monitor) {
 		TarMetadata tmd = fsIndex.getMetadata(file);
 		if (tmd == null) {
-			return null;
+			return FileAttributes.EMPTY;
 		}
 		TarArchiveEntry blob = tmd.tarArchiveEntry;
 		return FileAttributes.of(
@@ -116,7 +120,10 @@ public class TarFileSystem extends AbstractFileSystem<TarMetadata> {
 			FileAttribute.create(GROUP_NAME_ATTR, blob.getGroupName()),
 			FileAttribute.create(USER_ID_ATTR, blob.getLongUserId()),
 			FileAttribute.create(GROUP_ID_ATTR, blob.getLongGroupId()),
-			FileAttribute.create(UNIX_ACL_ATTR, (long) blob.getMode()));
+			FileAttribute.create(UNIX_ACL_ATTR, (long) blob.getMode()),
+			blob.isSymbolicLink()
+					? FileAttribute.create(SYMLINK_DEST_ATTR, blob.getLinkName())
+					: null);
 	}
 
 	private FileType tarToFileType(TarArchiveEntry tae) {
@@ -136,13 +143,14 @@ public class TarFileSystem extends AbstractFileSystem<TarMetadata> {
 	public ByteProvider getByteProvider(GFile file, TaskMonitor monitor)
 			throws IOException, CancelledException {
 
-		TarMetadata tmd = fsIndex.getMetadata(file);
+		GFile resolvedFile = fsIndex.resolveSymlinks(file);
+		TarMetadata tmd = fsIndex.getMetadata(resolvedFile);
 		if (tmd == null) {
 			throw new IOException("Unknown file " + file);
 		}
 
-		ByteProvider fileBP = fsService.getDerivedByteProvider(provider.getFSRL(), file.getFSRL(),
-			file.getPath(), tmd.tarArchiveEntry.getSize(), () -> {
+		ByteProvider fileBP = fsService.getDerivedByteProvider(provider.getFSRL(),
+			resolvedFile.getFSRL(), resolvedFile.getPath(), tmd.tarArchiveEntry.getSize(), () -> {
 				TarArchiveInputStream tarInput = new TarArchiveInputStream(provider.getInputStream(0));
 
 				int fileNum = 0;
@@ -151,13 +159,13 @@ public class TarFileSystem extends AbstractFileSystem<TarMetadata> {
 					if (fileNum == tmd.fileNum) {
 						if (!tmd.tarArchiveEntry.getName().equals(tarEntry.getName())) {
 							throw new IOException(
-								"Mismatch between filenum and tarEntry for " + file);
+								"Mismatch between filenum and tarEntry for " + resolvedFile);
 						}
 						return tarInput;
 					}
 					fileNum++;
 				}
-				throw new IOException("Could not find requested file " + file);
+				throw new IOException("Could not find requested file " + resolvedFile);
 			}, monitor);
 
 		return fileBP;
